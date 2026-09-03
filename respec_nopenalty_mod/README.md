@@ -63,45 +63,46 @@ offsets or tables shift.
 ## Requirements
 
 - Python 3 (no third-party packages — uses only the standard library).
-- The game **must be closed** before you copy the patched files over the live
-  ones.
+- The game **must be closed** before running `apply` or `revert`.
 
 ---
 
 ## Usage
 
-### 1. Generate patched copies
-
-From a terminal, run (pointing at the game root):
-
-```bash
-python3 patch_respec.py "/path/to/Space Pirates and Zombies"
-```
-
-This creates, for each of the three files:
-
-- `<file>.original` — an unmodified backup (created only if missing).
-- `<file>.patched`  — the patched copy.
-
-The live `.dso` files are **not** touched by the script.
-
-### 2. Activate (replace the live files)
-
-With the game closed:
+Run `spaz_mods.py` with a command. It defaults the game root to the folder that
+contains the script, so you can usually just run it from anywhere.
 
 ```bash
-cp "game/gameScripts/researchScreen.cs.dso.patched" "game/gameScripts/researchScreen.cs.dso"
-cp "game/gameScripts/instanceClasses/storyClasses/sector4/sector4InstanceClasses.cs.dso.patched" "game/gameScripts/instanceClasses/storyClasses/sector4/sector4InstanceClasses.cs.dso"
-cp "game/gameScripts/specialists.cs.dso.patched" "game/gameScripts/specialists.cs.dso"
+python3 respec_nopenalty_mod/spaz_mods.py <command>
 ```
 
-### 3. Revert
+| Command | What it does |
+|---|---|
+| `status` | Report whether each file is `ORIGINAL`, `PATCHED`, `MISSING`, or `MODIFIED`. |
+| `patch`  | Build the patched files in `store/` from the originals (only if the original checksum matches). |
+| `apply`  | Copy the patched files from `store/` over the live game files. |
+| `revert` | Restore the original files from `store/` over the live game files. |
+
+Typical workflow (game closed):
 
 ```bash
-cp "game/gameScripts/researchScreen.cs.dso.original" "game/gameScripts/researchScreen.cs.dso"
-cp "game/gameScripts/instanceClasses/storyClasses/sector4/sector4InstanceClasses.cs.dso.original" "game/gameScripts/instanceClasses/storyClasses/sector4/sector4InstanceClasses.cs.dso"
-cp "game/gameScripts/specialists.cs.dso.original" "game/gameScripts/specialists.cs.dso"
+python3 respec_nopenalty_mod/spaz_mods.py status     # see current state
+python3 respec_nopenalty_mod/spaz_mods.py patch      # build patched files in store/
+python3 respec_nopenalty_mod/spaz_mods.py apply      # put them in the game
+# ... play ...
+python3 respec_nopenalty_mod/spaz_mods.py revert     # put the originals back
 ```
+
+### The `store/` folder
+
+`store/` (next to the script) holds the pristine originals (`*.original`) and the
+generated patched copies (`*.patched`). The game folder itself stays clean — no
+extra files are left next to the live `.dso` files.
+
+Each file's original and patched SHA-256 checksums are recorded in the script,
+so `patch`/`apply`/`revert` verify integrity before touching anything. If a file
+doesn't match the expected checksum (e.g. a Steam update changed it), the tool
+refuses to patch it and reports the mismatch.
 
 ---
 

@@ -201,7 +201,7 @@ body starts at ip+7+argc
 ... then the compiler appends an extra OP_RETURN after the body
 ```
 
-So `body_start = decl_ip + 7 + argc`. This is what `patch_respec.py` uses to
+So `body_start = decl_ip + 7 + argc`. This is what `spaz_mods.py` uses to
 find `DEBT_GetRespecCost`'s body.
 
 ### Function call (`OP_CALLFUNC_RESOLVE` / `OP_CALLFUNC`)
@@ -334,6 +334,6 @@ Key strings: `$MaxSpecLevel`, `$SPEC_Level_Rookie/Veteran/Master`,
   `RequestStats` are Steam API method names visible as strings in the `.exe`
   (from the standard Steamworks example class).
 
-If Steam updates the game, the bytecode layout may shift; `patch_respec.py`
+If Steam updates the game, the bytecode layout may shift; `spaz_mods.py`
 verifies expected opcodes before writing and errors out rather than corrupting
 anything.

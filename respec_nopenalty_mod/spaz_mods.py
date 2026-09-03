@@ -1,36 +1,30 @@
 #!/usr/bin/env python3
 """
-SPAZ Respec "No Data Penalty / No Achievement Fail" patcher.
+SPAZ mod manager — patches, applies, and reverts TorqueScript (.dso) mods.
 
-Patches three TorqueScript (.dso) files in Space Pirates and Zombies:
+Each modded file has a known SHA-256 checksum for its original (unpatched) and
+patched states. The tool only patches when the original checksum matches, and it
+can report whether the live game files are patched, original, or modified.
 
-  1. game/gameScripts/researchScreen.cs.dso
-       -> DEBT_GetRespecCost() returns 0 (no data penalty on respec)
+Commands:
+    status  [game_dir]   Show whether each file is patched, original, or modified.
+    patch   [game_dir]   Build the patched files in store/ from the originals.
+    apply   [game_dir]   Copy the patched files over the live game files.
+    revert  [game_dir]   Restore the original files over the live game files.
 
-  2. game/gameScripts/instanceClasses/storyClasses/sector4/sector4InstanceClasses.cs.dso
-       -> S4_FinalBossComplete() grants ACH_NO_RESPEC unconditionally
+If game_dir is omitted it defaults to the directory that contains this script.
 
-  3. game/gameScripts/specialists.cs.dso
-       -> SpecialistDatablock::GetCurrentLevel() always returns Master (all
-          specialists promoted to their highest tier without leveling up)
-
-Usage:
-    python3 patch_respec.py "/path/to/Space Pirates and Zombies"
-
-This creates:
-    <file>.original  (backup, only if it doesn't already exist)
-    <file>.patched   (the patched copy)
-
-The live .dso files are NOT modified by this script. You copy the .patched
-files over the live files yourself (with the game closed). See README.md.
+store/ (next to this script) holds the pristine originals and the generated
+patched copies, so the game folder itself stays clean.
 """
 
+import hashlib
 import os
 import struct
 import sys
 
 # ---------------------------------------------------------------------------
-# TorqueScript opcode names (order matches Torque2D compiler.h CompiledInstructions)
+# TorqueScript opcode names (Torque2D compiler.h CompiledInstructions order)
 # ---------------------------------------------------------------------------
 OPNAMES = [
     "FUNC_DECL", "CREATE_OBJECT", "ADD_OBJECT", "END_OBJECT",
@@ -55,20 +49,20 @@ OPNAMES = [
     "PUSH", "PUSH_FRAME", "BREAK", "INVALID",
 ]
 
-# Opcode numeric constants used by the patch.
+# Opcode numeric constants.
 OP_FUNC_DECL = 0
 OP_JMPIFNOT = 5
 OP_RETURN = 11
 OP_CMPEQ = 12
+OP_CMPGE = 14
+OP_SETCURVAR = 34
+OP_LOADVAR_FLT = 39
 OP_STR_TO_FLT = 56
 OP_UINT_TO_STR = 62
 OP_LOADIMMED_UINT = 64
 OP_LOADIMMED_FLT = 65
 OP_LOADIMMED_STR = 67
 OP_CALLFUNC_RESOLVE = 70
-OP_SETCURVAR = 34
-OP_LOADVAR_FLT = 39
-OP_CMPGE = 14
 
 
 class DSO:
@@ -97,7 +91,6 @@ class DSO:
         self.codeSize = struct.unpack('<I', d[off:off + 4])[0]; off += 4
         self.linePairCount = struct.unpack('<I', d[off:off + 4])[0]; off += 4
 
-        # Decompress the bytecode, recording the file byte offset of each slot.
         self.code = []
         self.slot_off = []
         for _ in range(self.codeSize):
@@ -108,14 +101,12 @@ class DSO:
             else:
                 self.code.append(b)
 
-        # Line-break pairs.
         self.linePairs = [
             struct.unpack('<II', d[off + i * 8:off + i * 8 + 8])
             for i in range(self.linePairCount)
         ]
         off += self.linePairCount * 8
 
-        # Identifier table: string offset -> list of code-slot IPs to patch.
         ident_count = struct.unpack('<I', d[off:off + 4])[0]; off += 4
         self.idents = []
         for _ in range(ident_count):
@@ -125,7 +116,6 @@ class DSO:
                    for i in range(c)]; off += c * 4
             self.idents.append((o, ips))
 
-    # -- string helpers ----------------------------------------------------
     def gstr_at(self, off):
         if off >= len(self.gstr):
             return None
@@ -141,9 +131,7 @@ class DSO:
     def gstr_offset(self, name):
         return self.gstr.find(name.encode())
 
-    # -- function location -------------------------------------------------
     def func_decl_ip(self, name):
-        """Return the code-slot index of the OP_FUNC_DECL for `name`."""
         off = self.gstr_offset(name)
         if off < 0:
             return None
@@ -151,20 +139,17 @@ class DSO:
             if ident_off != off:
                 continue
             for ip in ips:
-                # fnName ident is at slot ip; the FUNC_DECL opcode is one slot
-                # before it.
                 if ip - 1 >= 0 and self.code[ip - 1] == OP_FUNC_DECL:
                     return ip - 1
         return None
 
     def body_start(self, decl_ip):
-        """Body start slot for a FUNC_DECL at `decl_ip` (32-bit layout)."""
         argc = self.code[decl_ip + 6]
         return decl_ip + 7 + argc
 
 
 # ---------------------------------------------------------------------------
-# Patches
+# Patches — each returns a list of (byte_offset, value) edits.
 # ---------------------------------------------------------------------------
 def patch_data_penalty(d):
     """Make DEBT_GetRespecCost() return 0 immediately."""
@@ -173,14 +158,12 @@ def patch_data_penalty(d):
         raise RuntimeError("DEBT_GetRespecCost not found")
     body = d.body_start(decl)
 
-    # Original body begins with: LOADIMMED_FLT 2.0 ; LOADIMMED_FLT 1.0 ; ...
     if d.code[body] != OP_LOADIMMED_FLT or d.code[body + 2] != OP_LOADIMMED_FLT:
         raise RuntimeError(
             f"DEBT_GetRespecCost body at slot {body} has unexpected opcodes "
             f"({d.code[body]}, {d.code[body + 2]}); game may have changed"
         )
 
-    # Replace with: LOADIMMED_UINT 0 ; UINT_TO_STR ; RETURN  (all 1-byte ops)
     return [
         (d.slot_off[body], OP_LOADIMMED_UINT),
         (d.slot_off[body + 1], 0),
@@ -196,7 +179,6 @@ def patch_achievement(d):
         raise RuntimeError("S4_FinalBossComplete not found")
     body = d.body_start(decl)
 
-    # Find the CALLFUNC_RESOLVE to DEBT_GetRespecCount within the body.
     respec_off = d.gstr_offset("DEBT_GetRespecCount")
     if respec_off < 0:
         raise RuntimeError("DEBT_GetRespecCount not found in string table")
@@ -206,11 +188,8 @@ def patch_achievement(d):
         if ident_off != respec_off:
             continue
         for ip in ips:
-            # CALLFUNC_RESOLVE opcode is one slot before its fnName ident (ip).
             if ip - 1 < body or d.code[ip - 1] != OP_CALLFUNC_RESOLVE:
                 continue
-            # CALLFUNC_RESOLVE layout: opcode, fnName(ip), ns(ip+1), callType(ip+2).
-            # Then the check is: STR_TO_FLT, CMPEQ, JMPIFNOT, <target>.
             jmp_ip = ip + 2 + 1 + 1 + 1
             if d.code[jmp_ip] != OP_JMPIFNOT:
                 continue
@@ -222,9 +201,7 @@ def patch_achievement(d):
     if target_slot is None:
         raise RuntimeError("could not locate the DEBT_GetRespecCount()==0 check")
 
-    new_target = target_slot + 1  # jump to the instruction right after JMPIFNOT
-
-    # The jump target is stored as a U32 (0xFF + 4 bytes) since it is >= 0xFF.
+    new_target = target_slot + 1
     if d.data[d.slot_off[target_slot]] != 0xFF:
         raise RuntimeError("unexpected jump-target encoding")
     return [(d.slot_off[target_slot] + 1, new_target)]
@@ -232,10 +209,6 @@ def patch_achievement(d):
 
 def patch_specialists(d):
     """Make SpecialistDatablock::GetCurrentLevel() always return Master."""
-    # In GetCurrentLevel the specialist's levelup count is compared against
-    # $SPEC_MasterLevelups; if it falls short, a JMPIFNOT skips the
-    # "return $SPEC_Level_Master" branch. Redirect that jump to the very next
-    # instruction so it always falls through to the Master return.
     off = d.gstr.find(b'$SPEC_MasterLevelups')
     if off < 0:
         raise RuntimeError("$SPEC_MasterLevelups not found")
@@ -245,9 +218,6 @@ def patch_specialists(d):
         if ident_off != off:
             continue
         for ip in ips:
-            # Pattern around ident slot ip (the Master threshold reference):
-            #   [ip-1]=SETCURVAR [ip+1]=LOADVAR_FLT [ip+2]=SETCURVAR
-            #   [ip+4]=LOADVAR_FLT [ip+5]=CMPGE [ip+6]=JMPIFNOT [ip+7]=target
             if ip - 1 < 0 or d.code[ip - 1] != OP_SETCURVAR:
                 continue
             if d.code[ip + 1] != OP_LOADVAR_FLT or d.code[ip + 2] != OP_SETCURVAR:
@@ -264,88 +234,187 @@ def patch_specialists(d):
     if target_slot is None:
         raise RuntimeError("could not locate the specialist level check")
 
-    new_target = target_slot + 1  # instruction right after JMPIFNOT (Master return)
-
+    new_target = target_slot + 1
     if d.data[d.slot_off[target_slot]] != 0xFF:
         raise RuntimeError("unexpected jump-target encoding")
     return [(d.slot_off[target_slot] + 1, new_target)]
 
 
 # ---------------------------------------------------------------------------
-# Main
+# Manifest — each entry has the game-relative path, known checksums, and the
+# patch function that transforms the original into the patched file.
 # ---------------------------------------------------------------------------
+FILES = [
+    {
+        "name": "researchScreen.cs.dso",
+        "path": "game/gameScripts/researchScreen.cs.dso",
+        "original": "e3ba3596b9e0f08e23806d2715e407841683e742e4c89994284dc5ab2214422a",
+        "patched": "3b2caae8fcfcd84185020d89536bbf111e15ababb9cbf425843f04b95074ca98",
+        "patch_fn": patch_data_penalty,
+    },
+    {
+        "name": "sector4InstanceClasses.cs.dso",
+        "path": "game/gameScripts/instanceClasses/storyClasses/sector4/sector4InstanceClasses.cs.dso",
+        "original": "acbb641da52d36825de0480f0ff996df97b25591deaed7e7b8af8bc8eb49067f",
+        "patched": "b2cea5e4afdd1305dc29ecd3945baeb56cc58df0db20f38881877e8f5ac1452e",
+        "patch_fn": patch_achievement,
+    },
+    {
+        "name": "specialists.cs.dso",
+        "path": "game/gameScripts/specialists.cs.dso",
+        "original": "4ce318785ccd0f9c582c453c146283ea39158b50e3555e373ad8654ca8c03449",
+        "patched": "b405a6ba29b0399f6b09003d916fccb99b2f886a3593ddc557cddc016840111f",
+        "patch_fn": patch_specialists,
+    },
+]
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+STORE_DIR = os.path.join(SCRIPT_DIR, "store")
+
+
+def sha256(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def read(path):
+    with open(path, "rb") as f:
+        return f.read()
+
+
+def write(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(data)
+
+
+def store_path(entry, suffix):
+    return os.path.join(STORE_DIR, entry["name"] + suffix)
+
+
+def apply_edits(original_bytes, patch_fn):
+    """Apply a patch function to the original bytes and return the result."""
+    d = DSO(original_bytes)
+    edits = patch_fn(d)
+    data = bytearray(original_bytes)
+    for byte_off, value in edits:
+        if 0 <= value < 0xFF:
+            data[byte_off] = value
+        else:
+            data[byte_off:byte_off + 4] = struct.pack('<I', value)
+    return bytes(data)
+
+
+def classify(h):
+    """Return a human status for a live-file checksum."""
+    for entry in FILES:
+        if h == entry["patched"]:
+            return "PATCHED"
+        if h == entry["original"]:
+            return "ORIGINAL"
+    return "MODIFIED (unknown)"
+
+
+# ---------------------------------------------------------------------------
+# Commands
+# ---------------------------------------------------------------------------
+def cmd_status(game_dir):
+    for entry in FILES:
+        path = os.path.join(game_dir, entry["path"])
+        if not os.path.isfile(path):
+            print(f"{entry['name']:32s} MISSING")
+            continue
+        h = sha256(read(path))
+        state = classify(h)
+        print(f"{entry['name']:32s} {state}")
+
+
+def cmd_patch(game_dir):
+    for entry in FILES:
+        name = entry["name"]
+        sp_orig = store_path(entry, ".original")
+        sp_patch = store_path(entry, ".patched")
+
+        # 1. Ensure we have the original in the store.
+        if not os.path.isfile(sp_orig):
+            live = os.path.join(game_dir, entry["path"])
+            if not os.path.isfile(live):
+                print(f"{name:32s} SKIP: no original available (game file missing)")
+                continue
+            h = sha256(read(live))
+            if h != entry["original"]:
+                print(f"{name:32s} SKIP: game file is not the known original "
+                      f"(is it patched or modified?). revert first.")
+                continue
+            write(sp_orig, read(live))
+            print(f"{name:32s} captured original from game")
+
+        # 2. Verify original checksum.
+        orig = read(sp_orig)
+        if sha256(orig) != entry["original"]:
+            print(f"{name:32s} ERROR: original checksum mismatch")
+            continue
+
+        # 3. Build and verify the patched file.
+        patched = apply_edits(orig, entry["patch_fn"])
+        if sha256(patched) != entry["patched"]:
+            print(f"{name:32s} ERROR: patched checksum mismatch")
+            continue
+        write(sp_patch, patched)
+        print(f"{name:32s} patched -> store")
+
+
+def cmd_apply(game_dir):
+    for entry in FILES:
+        name = entry["name"]
+        sp_patch = store_path(entry, ".patched")
+        if not os.path.isfile(sp_patch):
+            print(f"{name:32s} SKIP: no patched file in store (run 'patch' first)")
+            continue
+        patched = read(sp_patch)
+        if sha256(patched) != entry["patched"]:
+            print(f"{name:32s} ERROR: patched checksum mismatch in store")
+            continue
+        write(os.path.join(game_dir, entry["path"]), patched)
+        print(f"{name:32s} applied")
+
+
+def cmd_revert(game_dir):
+    for entry in FILES:
+        name = entry["name"]
+        sp_orig = store_path(entry, ".original")
+        if not os.path.isfile(sp_orig):
+            print(f"{name:32s} SKIP: no original in store")
+            continue
+        orig = read(sp_orig)
+        if sha256(orig) != entry["original"]:
+            print(f"{name:32s} ERROR: original checksum mismatch in store")
+            continue
+        write(os.path.join(game_dir, entry["path"]), orig)
+        print(f"{name:32s} reverted")
+
+
 def main():
-    if len(sys.argv) != 2:
+    if len(sys.argv) < 2:
         print(__doc__)
         sys.exit(1)
 
-    game_dir = sys.argv[1]
-    targets = [
-        os.path.join(game_dir, "game", "gameScripts", "researchScreen.cs.dso"),
-        os.path.join(
-            game_dir, "game", "gameScripts", "instanceClasses",
-            "storyClasses", "sector4", "sector4InstanceClasses.cs.dso",
-        ),
-        os.path.join(game_dir, "game", "gameScripts", "specialists.cs.dso"),
-    ]
+    command = sys.argv[1]
+    game_dir = sys.argv[2] if len(sys.argv) > 2 else os.path.dirname(SCRIPT_DIR)
 
-    for path in targets:
-        if not os.path.isfile(path):
-            print(f"ERROR: not found: {path}")
-            sys.exit(1)
+    commands = {
+        "status": cmd_status,
+        "patch": cmd_patch,
+        "apply": cmd_apply,
+        "revert": cmd_revert,
+    }
+    if command not in commands:
+        print(f"Unknown command: {command}")
+        print(__doc__)
+        sys.exit(1)
 
-        with open(path, "rb") as f:
-            data = bytearray(f.read())
-
-        d = DSO(bytes(data))
-        if d.version != 0x29:
-            print(f"WARNING: unexpected DSO version 0x{d.version:x} in {path}")
-
-        # Make a .original backup if one doesn't already exist.
-        original_path = path + ".original"
-        if not os.path.isfile(original_path):
-            with open(original_path, "wb") as f:
-                f.write(data)
-            print(f"backup -> {os.path.basename(original_path)}")
-
-        # Choose the patch based on filename.
-        base = os.path.basename(path)
-        if base == "researchScreen.cs.dso":
-            edits = patch_data_penalty(d)
-            desc = "data penalty (DEBT_GetRespecCost -> 0)"
-        elif base == "sector4InstanceClasses.cs.dso":
-            edits = patch_achievement(d)
-            desc = "ACH_NO_RESPEC always granted"
-        elif base == "specialists.cs.dso":
-            edits = patch_specialists(d)
-            desc = "specialists always Master tier"
-        else:
-            print(f"SKIP (unexpected file): {path}")
-            continue
-
-        # Apply.
-        for byte_off, value in edits:
-            if 0 <= value < 0xFF:
-                data[byte_off] = value
-            else:
-                # value >= 0xFF is written as a U32 over the existing 0xFF marker's payload.
-                data[byte_off:byte_off + 4] = struct.pack('<I', value)
-
-        patched_path = path + ".patched"
-        with open(patched_path, "wb") as f:
-            f.write(data)
-
-        # Verify the result re-parses and that the length is unchanged.
-        d2 = DSO(bytes(data))
-        if len(data) != len(d.data):
-            print(f"ERROR: size changed for {base} (should be length-preserving)")
-            sys.exit(1)
-
-        print(f"patched -> {os.path.basename(patched_path)}  ({desc})")
-        print(f"           size {len(data)} bytes (unchanged), version 0x{d2.version:x}")
-
-    print("\nDone. Copy the .patched files over the live .dso files with the game closed.")
-    print("See README.md for the exact cp commands and how to revert.")
+    if command in ("apply", "revert"):
+        print("NOTE: make sure the game is closed before applying/reverting.")
+    commands[command](game_dir)
 
 
 if __name__ == "__main__":

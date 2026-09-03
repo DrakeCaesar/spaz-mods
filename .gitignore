@@ -6,6 +6,7 @@
 !respec_nopenalty_mod/
 !respec_nopenalty_mod/**
 
-# ...except Python bytecode caches
+# ...except Python bytecode caches and the local file store
 __pycache__/
 *.pyc
+respec_nopenalty_mod/store/

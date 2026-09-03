@@ -116,7 +116,7 @@ class ModManagerApp:
 
         cols = ("file", "status")
         self.tree = ttk.Treeview(table_frame, columns=cols, show="headings", height=8)
-        self.tree.heading("file", text="File")
+        self.tree.heading("file", text="Mod")
         self.tree.heading("status", text="Status")
         self.tree.column("file", width=430, anchor="w")
         self.tree.column("status", width=180, anchor="w")
@@ -137,7 +137,7 @@ class ModManagerApp:
         self.desc_label = ttk.Label(desc_frame, textvariable=self.desc_var,
                                     style="Detail.TLabel", anchor="w", wraplength=730)
         self.desc_label.pack(fill="x")
-        self.desc_var.set("Select a file above to see what it does.")
+        self.desc_var.set("Select a mod above to see what it does.")
 
         # Actions.
         actions = ttk.Frame(self.root, padding=(16, 8))
@@ -175,10 +175,10 @@ class ModManagerApp:
     def _on_select(self, _event):
         sel = self.tree.selection()
         if not sel:
-            self.desc_var.set("Select a file above to see what it does.")
+            self.desc_var.set("Select a mod above to see what it does.")
             return
         name = self.tree.item(sel[0], "values")[0]
-        desc = next((e["desc"] for e in sm.FILES if e["name"] == name), "")
+        desc = next((e["desc"] for e in sm.FILES if e["title"] == name), "")
         self.desc_var.set(desc or name)
 
     # -- actions -----------------------------------------------------------
@@ -188,7 +188,7 @@ class ModManagerApp:
         for name, status in sm.get_statuses(game_dir):
             tag = status if status in self.STATUS_COLORS else "MODIFIED"
             self.tree.insert("", "end", values=(name, status), tags=(tag,))
-        self.desc_var.set("Select a file above to see what it does.")
+        self.desc_var.set("Select a mod above to see what it does.")
 
     def _patch(self):
         self._log("== Patch (build) ==")

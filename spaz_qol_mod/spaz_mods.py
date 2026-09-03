@@ -247,24 +247,27 @@ def patch_specialists(d):
 FILES = [
     {
         "name": "researchScreen.cs.dso",
+        "title": "Free Respec",
         "path": "game/gameScripts/researchScreen.cs.dso",
-        "desc": "Respec costs 0 Data — removes the Data Debt penalty.",
+        "desc": "Respecing a research tree costs no Data.",
         "original": "e3ba3596b9e0f08e23806d2715e407841683e742e4c89994284dc5ab2214422a",
         "patched": "3b2caae8fcfcd84185020d89536bbf111e15ababb9cbf425843f04b95074ca98",
         "patch_fn": patch_data_penalty,
     },
     {
         "name": "sector4InstanceClasses.cs.dso",
+        "title": "Single Minded",
         "path": "game/gameScripts/instanceClasses/storyClasses/sector4/sector4InstanceClasses.cs.dso",
-        "desc": "ACH_NO_RESPEC always granted — respecing won't fail it.",
+        "desc": "The Single Minded achievement is always granted, even if you respec.",
         "original": "acbb641da52d36825de0480f0ff996df97b25591deaed7e7b8af8bc8eb49067f",
         "patched": "b2cea5e4afdd1305dc29ecd3945baeb56cc58df0db20f38881877e8f5ac1452e",
         "patch_fn": patch_achievement,
     },
     {
         "name": "specialists.cs.dso",
+        "title": "Max-Level Specialists",
         "path": "game/gameScripts/specialists.cs.dso",
-        "desc": "Specialists are always Master tier — best stats without leveling.",
+        "desc": "All specialists are automatically Master tier. No leveling required.",
         "original": "4ce318785ccd0f9c582c453c146283ea39158b50e3555e373ad8654ca8c03449",
         "patched": "b405a6ba29b0399f6b09003d916fccb99b2f886a3593ddc557cddc016840111f",
         "patch_fn": patch_specialists,
@@ -325,17 +328,17 @@ def get_statuses(game_dir):
     for entry in FILES:
         path = os.path.join(game_dir, entry["path"])
         if not os.path.isfile(path):
-            out.append((entry["name"], "MISSING"))
+            out.append((entry["title"], "MISSING"))
             continue
         h = sha256(read(path))
-        out.append((entry["name"], classify(h)))
+        out.append((entry["title"], classify(h)))
     return out
 
 
 def run_patch(game_dir):
     out = []
     for entry in FILES:
-        name = entry["name"]
+        name = entry["title"]
         sp_orig = store_path(entry, ".original")
         sp_patch = store_path(entry, ".patched")
 
@@ -371,7 +374,7 @@ def run_patch(game_dir):
 def run_apply(game_dir):
     out = []
     for entry in FILES:
-        name = entry["name"]
+        name = entry["title"]
         sp_patch = store_path(entry, ".patched")
         if not os.path.isfile(sp_patch):
             out.append((name, "SKIP: no patched file in store (run patch first)"))
@@ -388,7 +391,7 @@ def run_apply(game_dir):
 def run_revert(game_dir):
     out = []
     for entry in FILES:
-        name = entry["name"]
+        name = entry["title"]
         sp_orig = store_path(entry, ".original")
         if not os.path.isfile(sp_orig):
             out.append((name, "SKIP: no original in store"))

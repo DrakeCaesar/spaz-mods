@@ -1,0 +1,7 @@
+# Ignore everything in this game folder by default
+*
+
+# ...but keep our mod files
+!.gitignore
+!respec_nopenalty_mod/
+!respec_nopenalty_mod/**

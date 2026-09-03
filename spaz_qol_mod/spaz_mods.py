@@ -207,7 +207,7 @@ def patch_achievement(d):
     return [(d.slot_off[target_slot] + 1, new_target)]
 
 
-def patch_specialists(d):
+def patch_specialist_master(d):
     """Make SpecialistDatablock::GetCurrentLevel() always return Master."""
     off = d.gstr.find(b'$SPEC_MasterLevelups')
     if off < 0:
@@ -240,6 +240,30 @@ def patch_specialists(d):
     return [(d.slot_off[target_slot] + 1, new_target)]
 
 
+def patch_specialist_capacity(d):
+    """Set specialist capacity ($MaxSpecialists) to 99 at every level."""
+    off = d.gstr.find(b'$MaxSpecialists')
+    if off < 0:
+        raise RuntimeError("$MaxSpecialists not found")
+    edits = []
+    for ident_off, ips in d.idents:
+        if ident_off != off:
+            continue
+        for ip in ips:
+            # A write is: LOADIMMED_UINT(v) ; LOADIMMED_IDENT(arr) ; ...
+            # The value is the immediate of LOADIMMED_UINT, at slot ip-2.
+            if ip - 3 >= 0 and d.code[ip - 3] == OP_LOADIMMED_UINT:
+                edits.append((d.slot_off[ip - 2], 99))
+    if not edits:
+        raise RuntimeError("could not locate $MaxSpecialists writes")
+    return edits
+
+
+def patch_specialists(d):
+    """Combined specialist tweaks: always Master tier + 99 capacity."""
+    return patch_specialist_master(d) + patch_specialist_capacity(d)
+
+
 # ---------------------------------------------------------------------------
 # Manifest — each entry has the game-relative path, known checksums, and the
 # patch function that transforms the original into the patched file.
@@ -265,11 +289,11 @@ FILES = [
     },
     {
         "name": "specialists.cs.dso",
-        "title": "Max-Level Specialists",
+        "title": "Specialist Tweaks",
         "path": "game/gameScripts/specialists.cs.dso",
-        "desc": "All specialists are automatically Master tier. No leveling required.",
+        "desc": "Specialists are always Master tier, and you can hold up to 99.",
         "original": "4ce318785ccd0f9c582c453c146283ea39158b50e3555e373ad8654ca8c03449",
-        "patched": "b405a6ba29b0399f6b09003d916fccb99b2f886a3593ddc557cddc016840111f",
+        "patched": "c3a5546b77dbae4a172883872d8388ac9127135b1748da64bdaf5a070a3db402",
         "patch_fn": patch_specialists,
     },
 ]

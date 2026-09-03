@@ -321,6 +321,28 @@ Key strings: `$MaxSpecLevel`, `$SPEC_Level_Rookie/Veteran/Master`,
 `SPEC_Activate` (activates a specialist), `SPEC_OnLevelup` (global levelup hook),
 `SPEC_UpdateBoostCharacteristics` (applies active specialists' bonuses).
 
+### Specialist capacity 99 (`specialists.cs.dso`)
+
+Total specialist capacity is the global `$MaxSpecialists` array, keyed by
+mothership level. The init code writes:
+
+```
+$MaxSpecialists["0"] = 0
+$MaxSpecialists["1"] = 0
+$MaxSpecialists["2"] = 4
+$MaxSpecialists["3"] = 8
+$MaxSpecialists["4"] = 12
+```
+
+Each line compiles to `LOADIMMED_UINT <value> ; LOADIMMED_IDENT $MaxSpecialists ;
+ADVANCE_STR ; LOADIMMED_STR "<key>" ; REWIND_STR ; SETCURVAR_ARRAY_CREATE ;
+SAVEVAR_UINT ; UINT_TO_NONE`. The patch overwrites the five `LOADIMMED_UINT`
+immediates with `99` (all `< 0xFF`, so single-byte, size-preserving writes).
+
+The *active* count is a separate array `$SPECMAN_Max` (`0,0,1,2,3`) and is
+deliberately left unchanged — this mod raises only the total capacity, not the
+number of simultaneously active specialists.
+
 ---
 
 ## 8. Useful reference strings / offsets (current build)

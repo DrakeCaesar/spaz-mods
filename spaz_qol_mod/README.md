@@ -11,11 +11,10 @@ This mod patches three things in **Space Pirates and Zombies**:
    granted at game completion if your respec count is still 0. This patch makes
    `ACH_NO_RESPEC` always granted, regardless of how many times you respecced.
 
-3. **Promotes all specialists to their highest tier (Master) automatically.**
-   Normally a specialist starts at Rookie and must be kept active and leveled
-   up to reach Veteran, then Master (which have better stats). This patch makes
-   every specialist report as Master tier, so they get the best bonuses without
-   any leveling up.
+3. **Specialist tweaks.** Two changes: every specialist is automatically
+   promoted to Master tier (best stats) with no leveling required, and the
+   specialist capacity is raised to 99 at every mothership level, so you can
+   hold up to 99 specialists at once.
 
 ---
 
@@ -25,9 +24,9 @@ This mod patches three things in **Space Pirates and Zombies**:
 |---|---|
 | `game/gameScripts/researchScreen.cs.dso` | `DEBT_GetRespecCost()` now returns `0`. |
 | `game/gameScripts/instanceClasses/storyClasses/sector4/sector4InstanceClasses.cs.dso` | `S4_FinalBossComplete()` grants `ACH_NO_RESPEC` unconditionally. |
-| `game/gameScripts/specialists.cs.dso` | `SpecialistDatablock::GetCurrentLevel()` always returns Master. |
+| `game/gameScripts/specialists.cs.dso` | `GetCurrentLevel()` always returns Master; `$MaxSpecialists` capacity is 99. |
 
-All three files are compiled TorqueScript (`.dso`) bytecode — **not** the
+All files are compiled TorqueScript (`.dso`) bytecode — **not** the
 `SpazGame.exe` executable. The game logic lives in these `.dso` files, which is
 why the patch edits them directly rather than the binary.
 
@@ -55,7 +54,7 @@ build). Function declarations (`OP_FUNC_DECL`) are followed by:
 `fnName, namespace, package, hasBody, endIp, argc`, then `argc` argument names,
 then the body.
 
-All three patches are **size-preserving** (byte-for-byte same file length), so no
+All patches are **size-preserving** (byte-for-byte same file length), so no
 offsets or tables shift.
 
 ---

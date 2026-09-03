@@ -365,12 +365,11 @@ def _rewrite_map(data):
     return dso_rewrite.rewrite(data)
 
 
-def _rewrite_resolution_zoom(data):
-    """Rewrite: getWord(getRes(),"0") -> getWord(Canvas.Extent,"0") in
-    CreateLevelLayers, so the scene zoom uses the actual canvas size instead of
-    the capped 1080p config (fixes pixelated/upscaled scene + HUD text)."""
+def _rewrite_max_zoom(data):
+    """Rewrite: raise %baseMaxZoom (1.5 -> 3.0) in CreateLevelLayers so the
+    player can zoom out further and see more of the map."""
     import dso_rewrite
-    return dso_rewrite.rewrite_resolution_zoom(data)
+    return dso_rewrite.rewrite_max_zoom(data)
 
 
 # ---------------------------------------------------------------------------
@@ -388,7 +387,7 @@ MODS = [
     },
     {
         "id": "single_minded",
-        "title": "Single Minded",
+        "title": "Single Minded Cheat",
         "path": "game/gameScripts/instanceClasses/storyClasses/sector4/sector4InstanceClasses.cs.dso",
         "desc": "The Single Minded achievement is always granted, even if you respec.",
         "patch_fn": patch_achievement,
@@ -430,17 +429,17 @@ MODS = [
     },
     {
         "id": "hud_font",
-        "title": "Crisp HUD Text",
+        "title": "Larger HUD Text",
         "path": "game/gameScripts/guiProfiles.cs.dso",
-        "desc": "Enlarges the ship HUD text (hull/shields/cargo/goons) from 14px to 18px so it stays legible when the game is upscaled via Special K.",
+        "desc": "Increases the ship HUD text (hull/shields/cargo/goons) size from 14px to 18px.",
         "patch_fn": patch_hud_font,
     },
     {
-        "id": "res_zoom",
-        "title": "Crisp Scene Scaling",
+        "id": "zoom_out",
+        "title": "Further Zoom Out",
         "path": "game/gameScripts/levelLoading.cs.dso",
-        "desc": "Scene zoom uses the actual screen size (not the capped 1080p config), fixing pixelated/upscaled scene + HUD text on enlarged displays.",
-        "rewrite_fn": _rewrite_resolution_zoom,
+        "desc": "Increases the maximum zoom-out (baseMaxZoom 1.5 -> 3.0) so you can zoom out further and see more of the map.",
+        "rewrite_fn": _rewrite_max_zoom,
     },
     {
         "id": "res_cap",
@@ -510,7 +509,7 @@ COMBINATIONS = {
     },
     "game/gameScripts/levelLoading.cs.dso": {
         0b0: "12d87621626cc8086a3895d3d9789018cbb93bc1f28902226c53414333bb9105",
-        0b1: "01dfc37660828c8a8704e2eb60e5d2ec96b855d666ade81f9ed6d4f116ed87f8",
+        0b1: "e1dcd0f56442bfecfb8581b6437757d61b1314a9569bbc2fab005c6d58aec084",
     },
     "common/gameScripts/canvas.cs.dso": {
         0b0: "f97f9342b7c9611460821764670526d97f5746bbff9874ed2e19219cb0082e5f",

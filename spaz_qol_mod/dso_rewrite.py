@@ -333,6 +333,82 @@ def rewrite_resolution_zoom(data):
     return bytes(out)
 
 
+def rewrite_max_zoom(data, new_max=3.0):
+    """Increase the maximum zoom-out in CreateLevelLayers by raising
+    %baseMaxZoom from 1.5 to `new_max` (lets the player zoom out further / see
+    more of the map). Appends the new float to the function float table and
+    repoints the LOADIMMED_FLT."""
+    d = DSO(data)
+    code = list(d.code)
+
+    imap = {}
+    for off, ips in d.idents:
+        for ip in ips:
+            imap[ip] = off
+
+    basemax_off = d.gstr.find(b'%baseMaxZoom')
+    if basemax_off < 0:
+        raise RuntimeError("%baseMaxZoom not found")
+
+    float_idx = None
+    target_ip = None
+    for ident_off, ips in d.idents:
+        if ident_off != basemax_off:
+            continue
+        for ip in ips:
+            if ip - 1 < 0 or code[ip - 1] != 35:  # SETCURVAR_CREATE
+                continue
+            for j in range(ip - 2, ip - 6, -1):
+                if code[j] == 65:  # LOADIMMED_FLT
+                    float_idx = code[j + 1]
+                    target_ip = j + 1  # the operand slot (float index)
+                    break
+            break
+        if float_idx is not None:
+            break
+    if float_idx is None:
+        raise RuntimeError("%baseMaxZoom LOADIMMED_FLT not found")
+
+    new_ffloats = list(d.ffloats) + [new_max]
+    new_idx = len(d.ffloats)
+
+    newcode = list(code)
+    newcode[target_ip] = new_idx
+
+    out = bytearray()
+    out += struct.pack('<I', d.version)
+    out += struct.pack('<I', len(d.gstr))
+    out += d.gstr
+    out += struct.pack('<I', len(d.fstr))
+    out += d.fstr
+    gfc = len(d.gfloats)
+    out += struct.pack('<I', gfc)
+    for f in d.gfloats:
+        out += struct.pack('<d', f)
+    out += struct.pack('<I', len(new_ffloats))
+    for f in new_ffloats:
+        out += struct.pack('<d', f)
+    code_bytes = bytearray()
+    for v in newcode:
+        if v < 0xFF:
+            code_bytes.append(v)
+        else:
+            code_bytes.append(0xFF)
+            code_bytes += struct.pack('<I', v)
+    out += struct.pack('<I', len(newcode))
+    out += struct.pack('<I', len(d.linePairs))
+    out += bytes(code_bytes)
+    for ip, line in d.linePairs:
+        out += struct.pack('<II', ip, line)
+    out += struct.pack('<I', len(d.idents))
+    for off, ips in d.idents:
+        out += struct.pack('<I', off)
+        out += struct.pack('<I', len(ips))
+        for ip in ips:
+            out += struct.pack('<I', ip)
+    return bytes(out)
+
+
 def main():
     if len(sys.argv) < 3:
         print(__doc__)

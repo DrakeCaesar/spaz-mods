@@ -7,7 +7,7 @@ Zombies**:
    Normally `DEBT_GetRespecCost()` charges a "Data Debt" that must be paid back
    as you collect Data; this makes the respec cost return `0`.
 
-2. **Single Minded** — disables the "no respec" achievement failure. Normally
+2. **Single Minded Cheat** — disables the "no respec" achievement failure. Normally
    the Steam achievement `ACH_NO_RESPEC` ("complete the game without
    respeccing") is only granted at game completion if your respec count is
    still 0; this makes `ACH_NO_RESPEC` always granted, regardless of how many
@@ -28,14 +28,12 @@ Zombies**:
 
 7. **System Map Centering** — same fix for the local-system (warp) map.
 
-8. **Crisp HUD Text** — enlarges the ship HUD text (hull / shields / cargo /
-   goons) from 14px to 18px so it stays legible when the game is upscaled via
-   Special K borderless fullscreen.
+8. **Larger HUD Text** — increases the ship HUD text (hull / shields / cargo /
+   goons) size from 14px to 18px.
 
-9. **Crisp Scene Scaling** — makes the scene zoom use the actual screen size
-   instead of the capped 1080p config, fixing pixelated/upscaled scene content
-   and HUD text. *(This is the root-cause fix; with it applied, #8 may be
-   unnecessary.)*
+9. **Further Zoom Out** — raises the maximum zoom-out (`%baseMaxZoom` 1.5 →
+   3.0) in `CreateLevelLayers`, so you can zoom out further and see more of
+   the map.
 
 10. **Resolution Cap 4K** — raises the game's hardcoded resolution cap from
     1920x1200 to 3840x2160, so you can select your native resolution (e.g.
@@ -48,13 +46,13 @@ Zombies**:
 | File | Mods |
 |---|---|
 | `game/gameScripts/researchScreen.cs.dso` | Free Respec — `DEBT_GetRespecCost()` now returns `0`. |
-| `game/gameScripts/instanceClasses/storyClasses/sector4/sector4InstanceClasses.cs.dso` | Single Minded — `S4_FinalBossComplete()` grants `ACH_NO_RESPEC` unconditionally. |
+| `game/gameScripts/instanceClasses/storyClasses/sector4/sector4InstanceClasses.cs.dso` | Single Minded Cheat — `S4_FinalBossComplete()` grants `ACH_NO_RESPEC` unconditionally. |
 | `game/gameScripts/specialists.cs.dso` | Max-Level Specialists (`GetCurrentLevel()` always Master) **and** Specialist Capacity 99 (`$MaxSpecialists` = 99). |
 | `game/gameScripts/starMap.cs.dso` | Galaxy Map Centering — `getWords(getRes(),…)` → `Canvas.Extent`. |
 | `game/gameScripts/galaxyGenGui.cs.dso` | Galaxy Gen Centering — same change (known to hang; keep disabled). |
 | `game/gameScripts/instanceWarp.cs.dso` | System Map Centering — same change. |
-| `game/gameScripts/guiProfiles.cs.dso` | Crisp HUD Text — `GuiSpaceScrollProfile` fontSize 14 → 18. |
-| `game/gameScripts/levelLoading.cs.dso` | Crisp Scene Scaling — `getWord(getRes(),…)` → `getWord(Canvas.Extent,…)`. |
+| `game/gameScripts/guiProfiles.cs.dso` | Larger HUD Text — `GuiSpaceScrollProfile` fontSize 14 → 18. |
+| `game/gameScripts/levelLoading.cs.dso` | Further Zoom Out — `%baseMaxZoom` 1.5 → 3.0. |
 | `common/gameScripts/canvas.cs.dso` | Resolution Cap 4K — `$maxResX`/`$maxResY` 1920×1200 → 3840×2160. |
 
 The two specialist mods edit the **same** file and are fully independent — you

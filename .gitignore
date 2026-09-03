@@ -5,3 +5,7 @@
 !.gitignore
 !respec_nopenalty_mod/
 !respec_nopenalty_mod/**
+
+# ...except Python bytecode caches
+__pycache__/
+*.pyc

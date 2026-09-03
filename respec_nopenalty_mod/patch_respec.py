@@ -2,13 +2,17 @@
 """
 SPAZ Respec "No Data Penalty / No Achievement Fail" patcher.
 
-Patches two TorqueScript (.dso) files in Space Pirates and Zombies:
+Patches three TorqueScript (.dso) files in Space Pirates and Zombies:
 
   1. game/gameScripts/researchScreen.cs.dso
        -> DEBT_GetRespecCost() returns 0 (no data penalty on respec)
 
   2. game/gameScripts/instanceClasses/storyClasses/sector4/sector4InstanceClasses.cs.dso
        -> S4_FinalBossComplete() grants ACH_NO_RESPEC unconditionally
+
+  3. game/gameScripts/specialists.cs.dso
+       -> SpecialistDatablock::GetCurrentLevel() always returns Master (all
+          specialists promoted to their highest tier without leveling up)
 
 Usage:
     python3 patch_respec.py "/path/to/Space Pirates and Zombies"
@@ -62,6 +66,9 @@ OP_LOADIMMED_UINT = 64
 OP_LOADIMMED_FLT = 65
 OP_LOADIMMED_STR = 67
 OP_CALLFUNC_RESOLVE = 70
+OP_SETCURVAR = 34
+OP_LOADVAR_FLT = 39
+OP_CMPGE = 14
 
 
 class DSO:
@@ -223,6 +230,47 @@ def patch_achievement(d):
     return [(d.slot_off[target_slot] + 1, new_target)]
 
 
+def patch_specialists(d):
+    """Make SpecialistDatablock::GetCurrentLevel() always return Master."""
+    # In GetCurrentLevel the specialist's levelup count is compared against
+    # $SPEC_MasterLevelups; if it falls short, a JMPIFNOT skips the
+    # "return $SPEC_Level_Master" branch. Redirect that jump to the very next
+    # instruction so it always falls through to the Master return.
+    off = d.gstr.find(b'$SPEC_MasterLevelups')
+    if off < 0:
+        raise RuntimeError("$SPEC_MasterLevelups not found")
+
+    target_slot = None
+    for ident_off, ips in d.idents:
+        if ident_off != off:
+            continue
+        for ip in ips:
+            # Pattern around ident slot ip (the Master threshold reference):
+            #   [ip-1]=SETCURVAR [ip+1]=LOADVAR_FLT [ip+2]=SETCURVAR
+            #   [ip+4]=LOADVAR_FLT [ip+5]=CMPGE [ip+6]=JMPIFNOT [ip+7]=target
+            if ip - 1 < 0 or d.code[ip - 1] != OP_SETCURVAR:
+                continue
+            if d.code[ip + 1] != OP_LOADVAR_FLT or d.code[ip + 2] != OP_SETCURVAR:
+                continue
+            if d.code[ip + 4] != OP_LOADVAR_FLT or d.code[ip + 5] != OP_CMPGE:
+                continue
+            if d.code[ip + 6] != OP_JMPIFNOT:
+                continue
+            target_slot = ip + 7
+            break
+        if target_slot is not None:
+            break
+
+    if target_slot is None:
+        raise RuntimeError("could not locate the specialist level check")
+
+    new_target = target_slot + 1  # instruction right after JMPIFNOT (Master return)
+
+    if d.data[d.slot_off[target_slot]] != 0xFF:
+        raise RuntimeError("unexpected jump-target encoding")
+    return [(d.slot_off[target_slot] + 1, new_target)]
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -238,6 +286,7 @@ def main():
             game_dir, "game", "gameScripts", "instanceClasses",
             "storyClasses", "sector4", "sector4InstanceClasses.cs.dso",
         ),
+        os.path.join(game_dir, "game", "gameScripts", "specialists.cs.dso"),
     ]
 
     for path in targets:
@@ -267,6 +316,9 @@ def main():
         elif base == "sector4InstanceClasses.cs.dso":
             edits = patch_achievement(d)
             desc = "ACH_NO_RESPEC always granted"
+        elif base == "specialists.cs.dso":
+            edits = patch_specialists(d)
+            desc = "specialists always Master tier"
         else:
             print(f"SKIP (unexpected file): {path}")
             continue

@@ -1,6 +1,6 @@
-# SPAZ — Respec "No Data Penalty / No Achievement Fail" mod
+# SPAZ — Respec / Specialist Quality-of-Life mod
 
-This mod patches two things in **Space Pirates and Zombies**:
+This mod patches three things in **Space Pirates and Zombies**:
 
 1. **Removes the Data penalty when respeccing** a research tree. Normally
    `DEBT_GetRespecCost()` charges a "Data Debt" that must be paid back as you
@@ -11,6 +11,12 @@ This mod patches two things in **Space Pirates and Zombies**:
    granted at game completion if your respec count is still 0. This patch makes
    `ACH_NO_RESPEC` always granted, regardless of how many times you respecced.
 
+3. **Promotes all specialists to their highest tier (Master) automatically.**
+   Normally a specialist starts at Rookie and must be kept active and leveled
+   up to reach Veteran, then Master (which have better stats). This patch makes
+   every specialist report as Master tier, so they get the best bonuses without
+   any leveling up.
+
 ---
 
 ## Files affected
@@ -19,8 +25,9 @@ This mod patches two things in **Space Pirates and Zombies**:
 |---|---|
 | `game/gameScripts/researchScreen.cs.dso` | `DEBT_GetRespecCost()` now returns `0`. |
 | `game/gameScripts/instanceClasses/storyClasses/sector4/sector4InstanceClasses.cs.dso` | `S4_FinalBossComplete()` grants `ACH_NO_RESPEC` unconditionally. |
+| `game/gameScripts/specialists.cs.dso` | `SpecialistDatablock::GetCurrentLevel()` always returns Master. |
 
-Both files are compiled TorqueScript (`.dso`) bytecode — **not** the
+All three files are compiled TorqueScript (`.dso`) bytecode — **not** the
 `SpazGame.exe` executable. The game logic lives in these `.dso` files, which is
 why the patch edits them directly rather than the binary.
 
@@ -48,7 +55,7 @@ build). Function declarations (`OP_FUNC_DECL`) are followed by:
 `fnName, namespace, package, hasBody, endIp, argc`, then `argc` argument names,
 then the body.
 
-The two patches are **size-preserving** (byte-for-byte same file length), so no
+All three patches are **size-preserving** (byte-for-byte same file length), so no
 offsets or tables shift.
 
 ---
@@ -71,7 +78,7 @@ From a terminal, run (pointing at the game root):
 python3 patch_respec.py "/path/to/Space Pirates and Zombies"
 ```
 
-This creates, for each of the two files:
+This creates, for each of the three files:
 
 - `<file>.original` — an unmodified backup (created only if missing).
 - `<file>.patched`  — the patched copy.
@@ -85,6 +92,7 @@ With the game closed:
 ```bash
 cp "game/gameScripts/researchScreen.cs.dso.patched" "game/gameScripts/researchScreen.cs.dso"
 cp "game/gameScripts/instanceClasses/storyClasses/sector4/sector4InstanceClasses.cs.dso.patched" "game/gameScripts/instanceClasses/storyClasses/sector4/sector4InstanceClasses.cs.dso"
+cp "game/gameScripts/specialists.cs.dso.patched" "game/gameScripts/specialists.cs.dso"
 ```
 
 ### 3. Revert
@@ -92,6 +100,7 @@ cp "game/gameScripts/instanceClasses/storyClasses/sector4/sector4InstanceClasses
 ```bash
 cp "game/gameScripts/researchScreen.cs.dso.original" "game/gameScripts/researchScreen.cs.dso"
 cp "game/gameScripts/instanceClasses/storyClasses/sector4/sector4InstanceClasses.cs.dso.original" "game/gameScripts/instanceClasses/storyClasses/sector4/sector4InstanceClasses.cs.dso"
+cp "game/gameScripts/specialists.cs.dso.original" "game/gameScripts/specialists.cs.dso"
 ```
 
 ---
@@ -102,6 +111,10 @@ cp "game/gameScripts/instanceClasses/storyClasses/sector4/sector4InstanceClasses
   "respecced" state to Steam, `ACH_NO_RESPEC` may already be considered lost for
   that save. The patch guarantees it will be granted at future game completions,
   but cannot retroactively un-fail an already-synced state.
+- **Specialist tier is computed from `GetCurrentLevel()`.** This patch changes
+  only what tier is *reported* (always Master); the internal `specLevelupCount`
+  is left alone, so the leveling UI/flow is otherwise untouched. Existing
+  specialists will show as Master immediately after loading.
 - If the game is updated by Steam, the bytecode layout may change and the patch
   may need re-deriving. The script verifies expected opcodes before writing and
   will refuse to patch (with an error) if they don't match.

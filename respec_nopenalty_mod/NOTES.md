@@ -1,9 +1,10 @@
 # SPAZ reverse-engineering notes — what I learned
 
 These are the technical findings from reverse-engineering **Space Pirates and
-Zombies** (SPAZ) to patch the respec "data debt" penalty and the `ACH_NO_RESPEC`
-achievement. They document the engine, the compiled-script format, and the
-specifics of how the two effects are implemented.
+Zombies** (SPAZ) to patch the respec "data debt" penalty, the `ACH_NO_RESPEC`
+achievement, and the specialist leveling. They document the engine, the
+compiled-script format, and the specifics of how the three effects are
+implemented.
 
 ---
 
@@ -32,7 +33,7 @@ grant them* is TorqueScript bytecode in the `.dso` files.
 
 ---
 
-## 2. The two effects and where they live
+## 2. The three effects and where they live
 
 ### Data penalty ("Data Debt" / DEBT system)
 
@@ -173,7 +174,7 @@ Opcode order matches Torque2D `compiler.h` `CompiledInstructions`:
 | `ADD_OBJECT` (2) | 1 | `placeAtRoot` |
 | `JMPIFFNOT/JMPIFNOT/JMPIFF/JMPIF/JMPIFNOT_NP/JMPIF_NP/JMP` | 1 | jump target |
 | `SETCURVAR*` (34–37) | 1 | variable-name identifier |
-| `SETCUROBJECT*` (44–46) | 1 | identifier |
+| `SETCUROBJECT*` (44–46) | 0 | reads the object from the string stack (no operand) |
 | `SETCURFIELD*` (47–48) | 1 | field-name identifier |
 | `LOADIMMED_UINT/FLT/STR` (64/65/67) | 1 | immediate / float index / string offset |
 | `LOADIMMED_IDENT` (69) | 1 | identifier |
@@ -252,6 +253,13 @@ OP_CALLFUNC_RESOLVE  funcName  namespace  callType
    (single-byte opcodes for the data patch; a `0xFF+U32` jump target rewritten
    in place for the achievement patch), so no offsets or tables shifted.
 
+7. **`SETCUROBJECT*` takes no operand.** It reads the target object from the
+   string stack (the object's id/name was just evaluated). I initially gave it
+   a 1-operand count, which desynced field-access disassembly —
+   `%this.someField` compiles to `LOADVAR_STR ; SETCUROBJECT ; SETCURFIELD field ;
+   LOADFIELD_*`. Field access via `%this.someField` is the common pattern to
+   recognize when disassembling method bodies.
+
 ---
 
 ## 7. The actual patches
@@ -286,6 +294,32 @@ JMPIFNOT <skip>       ; skip SetAchievement if respec count != 0
 Change the `JMPIFNOT` target from `<skip>` to the **next instruction** (the
 `SetAchievement` block). Now both branches fall through to the grant, so
 `ACH_NO_RESPEC` is always awarded.
+
+### Specialists always Master (`specialists.cs.dso`)
+
+Specialists have a level (`Rookie` / `Veteran` / `Master`) that gates their stat
+bonuses. `SpecialistDatablock::GetCurrentLevel()` computes it:
+
+```
+%currentCount = %this.specLevelupCount
+if (%currentCount >= $SPEC_MasterLevelups)   return $SPEC_Level_Master
+if (%currentCount >= $SPEC_VeteranLevelups)  return $SPEC_Level_Veteran
+return $SPEC_Level_Rookie
+```
+
+The thresholds live in globals `$SPEC_MasterLevelups` / `$SPEC_VeteranLevelups`
+(set in the init code); the levelup counter is the datablock field
+`specLevelupCount` (incremented by `IncLevelupCount`, applied by `OnLevelup`).
+
+The patch redirects the first `JMPIFNOT` (the Master check) to the **next
+instruction** — i.e. the `return $SPEC_Level_Master` branch — so the function
+always returns Master regardless of `specLevelupCount`. Same size-preserving
+`0xFF+U32` jump-target rewrite as the achievement patch.
+
+Key strings: `$MaxSpecLevel`, `$SPEC_Level_Rookie/Veteran/Master`,
+`$SPEC_MasterLevelups`, `$SPEC_VeteranLevelups`, `specLevelupCount`,
+`SPEC_Activate` (activates a specialist), `SPEC_OnLevelup` (global levelup hook),
+`SPEC_UpdateBoostCharacteristics` (applies active specialists' bonuses).
 
 ---
 

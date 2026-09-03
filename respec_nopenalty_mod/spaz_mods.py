@@ -315,20 +315,22 @@ def classify(h):
 
 
 # ---------------------------------------------------------------------------
-# Commands
+# Operations — return lists of (name, message) so the CLI and GUI share logic.
 # ---------------------------------------------------------------------------
-def cmd_status(game_dir):
+def get_statuses(game_dir):
+    out = []
     for entry in FILES:
         path = os.path.join(game_dir, entry["path"])
         if not os.path.isfile(path):
-            print(f"{entry['name']:32s} MISSING")
+            out.append((entry["name"], "MISSING"))
             continue
         h = sha256(read(path))
-        state = classify(h)
-        print(f"{entry['name']:32s} {state}")
+        out.append((entry["name"], classify(h)))
+    return out
 
 
-def cmd_patch(game_dir):
+def run_patch(game_dir):
+    out = []
     for entry in FILES:
         name = entry["name"]
         sp_orig = store_path(entry, ".original")
@@ -338,59 +340,86 @@ def cmd_patch(game_dir):
         if not os.path.isfile(sp_orig):
             live = os.path.join(game_dir, entry["path"])
             if not os.path.isfile(live):
-                print(f"{name:32s} SKIP: no original available (game file missing)")
+                out.append((name, "SKIP: no original available (game file missing)"))
                 continue
             h = sha256(read(live))
             if h != entry["original"]:
-                print(f"{name:32s} SKIP: game file is not the known original "
-                      f"(is it patched or modified?). revert first.")
+                out.append((name, "SKIP: game file is not the known original (patched/modified?)"))
                 continue
             write(sp_orig, read(live))
-            print(f"{name:32s} captured original from game")
+            out.append((name, "captured original from game"))
 
         # 2. Verify original checksum.
         orig = read(sp_orig)
         if sha256(orig) != entry["original"]:
-            print(f"{name:32s} ERROR: original checksum mismatch")
+            out.append((name, "ERROR: original checksum mismatch"))
             continue
 
         # 3. Build and verify the patched file.
         patched = apply_edits(orig, entry["patch_fn"])
         if sha256(patched) != entry["patched"]:
-            print(f"{name:32s} ERROR: patched checksum mismatch")
+            out.append((name, "ERROR: patched checksum mismatch"))
             continue
         write(sp_patch, patched)
-        print(f"{name:32s} patched -> store")
+        out.append((name, "patched -> store"))
+    return out
 
 
-def cmd_apply(game_dir):
+def run_apply(game_dir):
+    out = []
     for entry in FILES:
         name = entry["name"]
         sp_patch = store_path(entry, ".patched")
         if not os.path.isfile(sp_patch):
-            print(f"{name:32s} SKIP: no patched file in store (run 'patch' first)")
+            out.append((name, "SKIP: no patched file in store (run patch first)"))
             continue
         patched = read(sp_patch)
         if sha256(patched) != entry["patched"]:
-            print(f"{name:32s} ERROR: patched checksum mismatch in store")
+            out.append((name, "ERROR: patched checksum mismatch in store"))
             continue
         write(os.path.join(game_dir, entry["path"]), patched)
-        print(f"{name:32s} applied")
+        out.append((name, "applied"))
+    return out
 
 
-def cmd_revert(game_dir):
+def run_revert(game_dir):
+    out = []
     for entry in FILES:
         name = entry["name"]
         sp_orig = store_path(entry, ".original")
         if not os.path.isfile(sp_orig):
-            print(f"{name:32s} SKIP: no original in store")
+            out.append((name, "SKIP: no original in store"))
             continue
         orig = read(sp_orig)
         if sha256(orig) != entry["original"]:
-            print(f"{name:32s} ERROR: original checksum mismatch in store")
+            out.append((name, "ERROR: original checksum mismatch in store"))
             continue
         write(os.path.join(game_dir, entry["path"]), orig)
-        print(f"{name:32s} reverted")
+        out.append((name, "reverted"))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# CLI commands
+# ---------------------------------------------------------------------------
+def cmd_status(game_dir):
+    for name, status in get_statuses(game_dir):
+        print(f"{name:32s} {status}")
+
+
+def cmd_patch(game_dir):
+    for name, msg in run_patch(game_dir):
+        print(f"{name:32s} {msg}")
+
+
+def cmd_apply(game_dir):
+    for name, msg in run_apply(game_dir):
+        print(f"{name:32s} {msg}")
+
+
+def cmd_revert(game_dir):
+    for name, msg in run_revert(game_dir):
+        print(f"{name:32s} {msg}")
 
 
 def main():

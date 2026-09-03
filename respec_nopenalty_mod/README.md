@@ -67,6 +67,20 @@ offsets or tables shift.
 
 ---
 
+## GUI
+
+There's a graphical front-end too. Run:
+
+```bash
+python3 respec_nopenalty_mod/spaz_mods_gui.py
+```
+
+It shows each file's status (color-coded), lets you pick the game folder, and has
+**Patch / Apply / Revert / Refresh** buttons plus a log — same checksum
+verification as the CLI, just point-and-click.
+
+---
+
 ## Usage
 
 Run `spaz_mods.py` with a command. It defaults the game root to the folder that

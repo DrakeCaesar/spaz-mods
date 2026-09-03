@@ -42,8 +42,8 @@ STATUS_RED = "#e05252"
 
 class ModManagerApp:
     STATUS_COLORS = {
-        "PATCHED": STATUS_GREEN,
-        "ORIGINAL": STATUS_BLUE,
+        "APPLIED": STATUS_GREEN,
+        "NOT APPLIED": STATUS_BLUE,
         "MISSING": STATUS_ORANGE,
     }
     DEFAULT_COLOR = STATUS_RED
@@ -120,8 +120,8 @@ class ModManagerApp:
         self.tree.heading("status", text="Status")
         self.tree.column("file", width=430, anchor="w")
         self.tree.column("status", width=180, anchor="w")
-        self.tree.tag_configure("PATCHED", foreground=self.STATUS_COLORS["PATCHED"])
-        self.tree.tag_configure("ORIGINAL", foreground=self.STATUS_COLORS["ORIGINAL"])
+        self.tree.tag_configure("APPLIED", foreground=self.STATUS_COLORS["APPLIED"])
+        self.tree.tag_configure("NOT APPLIED", foreground=self.STATUS_COLORS["NOT APPLIED"])
         self.tree.tag_configure("MISSING", foreground=self.STATUS_COLORS["MISSING"])
         self.tree.tag_configure("MODIFIED", foreground=self.DEFAULT_COLOR)
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
@@ -177,17 +177,18 @@ class ModManagerApp:
         if not sel:
             self.desc_var.set("Select a mod above to see what it does.")
             return
-        name = self.tree.item(sel[0], "values")[0]
-        desc = next((e["desc"] for e in sm.FILES if e["title"] == name), "")
-        self.desc_var.set(desc or name)
+        mod_id = sel[0]
+        mod = next((m for m in sm.MODS if m["id"] == mod_id), None)
+        self.desc_var.set(mod["desc"] if mod else mod_id)
 
     # -- actions -----------------------------------------------------------
     def refresh(self):
         self.tree.delete(*self.tree.get_children())
         game_dir = self.game_dir_var.get()
-        for name, status in sm.get_statuses(game_dir):
+        for mod, (_, status) in zip(sm.MODS, sm.get_statuses(game_dir)):
             tag = status if status in self.STATUS_COLORS else "MODIFIED"
-            self.tree.insert("", "end", values=(name, status), tags=(tag,))
+            self.tree.insert("", "end", iid=mod["id"],
+                             values=(mod["title"], status), tags=(tag,))
         self.desc_var.set("Select a mod above to see what it does.")
 
     def _patch(self):
@@ -196,25 +197,36 @@ class ModManagerApp:
         self._log("Done.")
         self.refresh()
 
+    def _selected_mod_ids(self):
+        return list(self.tree.selection())
+
     def _apply(self):
-        if not messagebox.askyesno(
-            "Apply patches",
-            "Make sure the game is CLOSED.\n\nApply the patched files to the game?",
-        ):
+        sel = self._selected_mod_ids()
+        if sel:
+            names = ", ".join(m["title"] for m in sm.MODS if m["id"] in sel)
+            prompt = ("Make sure the game is CLOSED.\n\n"
+                      f"Apply the selected mod(s):\n  {names}")
+        else:
+            prompt = "Make sure the game is CLOSED.\n\nApply ALL mods to the game?"
+        if not messagebox.askyesno("Apply patches", prompt):
             return
         self._log("== Apply to game ==")
-        self._log_lines(sm.run_apply(self.game_dir_var.get()))
+        self._log_lines(sm.run_apply(self.game_dir_var.get(), sel or None))
         self._log("Done.")
         self.refresh()
 
     def _revert(self):
-        if not messagebox.askyesno(
-            "Revert patches",
-            "Make sure the game is CLOSED.\n\nRestore the original files?",
-        ):
+        sel = self._selected_mod_ids()
+        if sel:
+            names = ", ".join(m["title"] for m in sm.MODS if m["id"] in sel)
+            prompt = ("Make sure the game is CLOSED.\n\n"
+                      f"Revert the selected mod(s):\n  {names}")
+        else:
+            prompt = "Make sure the game is CLOSED.\n\nRestore ALL original files?"
+        if not messagebox.askyesno("Revert patches", prompt):
             return
         self._log("== Revert ==")
-        self._log_lines(sm.run_revert(self.game_dir_var.get()))
+        self._log_lines(sm.run_revert(self.game_dir_var.get(), sel or None))
         self._log("Done.")
         self.refresh()
 

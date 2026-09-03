@@ -2,20 +2,21 @@
 """
 SPAZ mod manager — patches, applies, and reverts TorqueScript (.dso) mods.
 
-Each modded file has a known SHA-256 checksum for its original (unpatched) and
-patched states. The tool only patches when the original checksum matches, and it
-can report whether the live game files are patched, original, or modified.
+Mods are independent toggles. Several mods may target the same file (the two
+specialist tweaks both edit specialists.cs.dso); a file's checksum identifies
+exactly which subset is applied. Each mod has a known SHA-256 for its pristine
+(original) file, and every enabled-subset has a known combined checksum.
 
 Commands:
-    status  [game_dir]   Show whether each file is patched, original, or modified.
-    patch   [game_dir]   Build the patched files in store/ from the originals.
-    apply   [game_dir]   Copy the patched files over the live game files.
-    revert  [game_dir]   Restore the original files over the live game files.
+    status  [game_dir]                 Show each mod's state (APPLIED / NOT APPLIED).
+    patch   [game_dir]                 Capture pristine originals and verify checksums.
+    apply   [game_dir] [mod_id ...]    Enable mods (default: all).
+    revert  [game_dir] [mod_id ...]    Disable mods (default: all).
 
 If game_dir is omitted it defaults to the directory that contains this script.
 
-store/ (next to this script) holds the pristine originals and the generated
-patched copies, so the game folder itself stays clean.
+store/ (next to this script) holds the pristine originals, so the game folder
+itself stays clean.
 """
 
 import hashlib
@@ -259,44 +260,72 @@ def patch_specialist_capacity(d):
     return edits
 
 
-def patch_specialists(d):
-    """Combined specialist tweaks: always Master tier + 99 capacity."""
-    return patch_specialist_master(d) + patch_specialist_capacity(d)
-
-
 # ---------------------------------------------------------------------------
-# Manifest — each entry has the game-relative path, known checksums, and the
-# patch function that transforms the original into the patched file.
+# Mod registry — each MOD is an independent toggle. Multiple mods may target
+# the same file (the two specialist tweaks both edit specialists.cs.dso); the
+# combined file checksum depends on which subset is enabled.
 # ---------------------------------------------------------------------------
-FILES = [
+MODS = [
     {
-        "name": "researchScreen.cs.dso",
+        "id": "free_respec",
         "title": "Free Respec",
         "path": "game/gameScripts/researchScreen.cs.dso",
         "desc": "Respecing a research tree costs no Data.",
-        "original": "e3ba3596b9e0f08e23806d2715e407841683e742e4c89994284dc5ab2214422a",
-        "patched": "3b2caae8fcfcd84185020d89536bbf111e15ababb9cbf425843f04b95074ca98",
         "patch_fn": patch_data_penalty,
     },
     {
-        "name": "sector4InstanceClasses.cs.dso",
+        "id": "single_minded",
         "title": "Single Minded",
         "path": "game/gameScripts/instanceClasses/storyClasses/sector4/sector4InstanceClasses.cs.dso",
         "desc": "The Single Minded achievement is always granted, even if you respec.",
-        "original": "acbb641da52d36825de0480f0ff996df97b25591deaed7e7b8af8bc8eb49067f",
-        "patched": "b2cea5e4afdd1305dc29ecd3945baeb56cc58df0db20f38881877e8f5ac1452e",
         "patch_fn": patch_achievement,
     },
     {
-        "name": "specialists.cs.dso",
-        "title": "Specialist Tweaks",
+        "id": "spec_master",
+        "title": "Max-Level Specialists",
         "path": "game/gameScripts/specialists.cs.dso",
-        "desc": "Specialists are always Master tier, and you can hold up to 99.",
-        "original": "4ce318785ccd0f9c582c453c146283ea39158b50e3555e373ad8654ca8c03449",
-        "patched": "c3a5546b77dbae4a172883872d8388ac9127135b1748da64bdaf5a070a3db402",
-        "patch_fn": patch_specialists,
+        "desc": "All specialists are automatically Master tier.",
+        "patch_fn": patch_specialist_master,
+    },
+    {
+        "id": "spec_capacity",
+        "title": "Specialist Capacity 99",
+        "path": "game/gameScripts/specialists.cs.dso",
+        "desc": "Hold up to 99 specialists at every mothership level.",
+        "patch_fn": patch_specialist_capacity,
     },
 ]
+
+# Pristine (unmodded) SHA-256 checksum for each game-relative path.
+ORIGINALS = {
+    "game/gameScripts/researchScreen.cs.dso":
+        "e3ba3596b9e0f08e23806d2715e407841683e742e4c89994284dc5ab2214422a",
+    "game/gameScripts/instanceClasses/storyClasses/sector4/sector4InstanceClasses.cs.dso":
+        "acbb641da52d36825de0480f0ff996df97b25591deaed7e7b8af8bc8eb49067f",
+    "game/gameScripts/specialists.cs.dso":
+        "4ce318785ccd0f9c582c453c146283ea39158b50e3555e373ad8654ca8c03449",
+}
+
+# Expected SHA-256 for every enabled-subset of mods on a given path.
+# Bit `i` = the i-th mod for that path in MODS order.
+#   specialists.cs.dso: bit0 = Max-Level Specialists, bit1 = Capacity 99
+#   -> 0b00 original, 0b01 master only, 0b10 capacity only, 0b11 both.
+COMBINATIONS = {
+    "game/gameScripts/researchScreen.cs.dso": {
+        0b0: "e3ba3596b9e0f08e23806d2715e407841683e742e4c89994284dc5ab2214422a",
+        0b1: "3b2caae8fcfcd84185020d89536bbf111e15ababb9cbf425843f04b95074ca98",
+    },
+    "game/gameScripts/instanceClasses/storyClasses/sector4/sector4InstanceClasses.cs.dso": {
+        0b0: "acbb641da52d36825de0480f0ff996df97b25591deaed7e7b8af8bc8eb49067f",
+        0b1: "b2cea5e4afdd1305dc29ecd3945baeb56cc58df0db20f38881877e8f5ac1452e",
+    },
+    "game/gameScripts/specialists.cs.dso": {
+        0b00: "4ce318785ccd0f9c582c453c146283ea39158b50e3555e373ad8654ca8c03449",
+        0b01: "b405a6ba29b0399f6b09003d916fccb99b2f886a3593ddc557cddc016840111f",
+        0b10: "8c72d6e59190f4f440a8c0bf79f949c8bad6f773f9d1b0cdd4806dbfdba44cad",
+        0b11: "c3a5546b77dbae4a172883872d8388ac9127135b1748da64bdaf5a070a3db402",
+    },
+}
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 STORE_DIR = os.path.join(SCRIPT_DIR, "store")
@@ -317,12 +346,31 @@ def write(path, data):
         f.write(data)
 
 
-def store_path(entry, suffix):
-    return os.path.join(STORE_DIR, entry["name"] + suffix)
+def mods_for_path(path):
+    return [m for m in MODS if m["path"] == path]
+
+
+def bit_for(path, mod_id):
+    for i, m in enumerate(mods_for_path(path)):
+        if m["id"] == mod_id:
+            return i
+    raise KeyError(mod_id)
+
+
+def store_original_path(path):
+    return os.path.join(STORE_DIR, os.path.basename(path) + ".original")
+
+
+def checksum_to_mask(path, h):
+    """Map a live-file checksum to the enabled-mod bitmask (None if unknown)."""
+    for mask, expected in COMBINATIONS[path].items():
+        if h == expected:
+            return mask
+    return None
 
 
 def apply_edits(original_bytes, patch_fn):
-    """Apply a patch function to the original bytes and return the result."""
+    """Apply a patch function to bytes and return the result (size-preserving)."""
     d = DSO(original_bytes)
     edits = patch_fn(d)
     data = bytearray(original_bytes)
@@ -334,14 +382,49 @@ def apply_edits(original_bytes, patch_fn):
     return bytes(data)
 
 
-def classify(h):
-    """Return a human status for a live-file checksum."""
-    for entry in FILES:
-        if h == entry["patched"]:
-            return "PATCHED"
-        if h == entry["original"]:
-            return "ORIGINAL"
-    return "MODIFIED (unknown)"
+def build_bytes(path, mask):
+    """Build the file for `path` with exactly the mods in `mask` enabled."""
+    data = read(store_original_path(path))
+    for i, m in enumerate(mods_for_path(path)):
+        if mask & (1 << i):
+            data = apply_edits(data, m["patch_fn"])
+    return data
+
+
+def _ensure_original(game_dir, path):
+    """Make sure the pristine original for `path` is in the store; return it."""
+    sp = store_original_path(path)
+    if os.path.isfile(sp):
+        orig = read(sp)
+        if sha256(orig) != ORIGINALS[path]:
+            raise RuntimeError(f"store original for {path} has wrong checksum")
+        return orig
+    live = os.path.join(game_dir, path)
+    if not os.path.isfile(live):
+        raise RuntimeError(f"no game file at {path} to capture")
+    data = read(live)
+    if sha256(data) != ORIGINALS[path]:
+        raise RuntimeError(
+            f"{path} is not the known pristine original "
+            f"(already patched/modified?) — restore the original first"
+        )
+    write(sp, data)
+    return data
+
+
+def resolve_mods(args):
+    """Turn a list of mod ids/titles (empty = all) into a list of mod dicts."""
+    if not args:
+        return list(MODS)
+    by_id = {m["id"]: m for m in MODS}
+    by_title = {m["title"].lower(): m for m in MODS}
+    out = []
+    for a in args:
+        m = by_id.get(a) or by_title.get(a.lower())
+        if m is None:
+            raise RuntimeError(f"unknown mod: {a}")
+        out.append(m)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -349,83 +432,95 @@ def classify(h):
 # ---------------------------------------------------------------------------
 def get_statuses(game_dir):
     out = []
-    for entry in FILES:
-        path = os.path.join(game_dir, entry["path"])
-        if not os.path.isfile(path):
-            out.append((entry["title"], "MISSING"))
-            continue
-        h = sha256(read(path))
-        out.append((entry["title"], classify(h)))
+    seen = {}
+    for mod in MODS:
+        path = mod["path"]
+        if path not in seen:
+            live = os.path.join(game_dir, path)
+            if not os.path.isfile(live):
+                seen[path] = "missing"
+            else:
+                seen[path] = checksum_to_mask(path, sha256(read(live)))
+        state = seen[path]
+        title = mod["title"]
+        if state == "missing":
+            out.append((title, "MISSING"))
+        elif state is None:
+            out.append((title, "MODIFIED (unknown)"))
+        elif state & (1 << bit_for(path, mod["id"])):
+            out.append((title, "APPLIED"))
+        else:
+            out.append((title, "NOT APPLIED"))
     return out
+
+
+def _toggle(game_dir, mods, enable):
+    out = []
+    by_path = {}
+    for m in mods:
+        by_path.setdefault(m["path"], []).append(m)
+
+    for path, ms in by_path.items():
+        try:
+            _ensure_original(game_dir, path)
+        except RuntimeError as e:
+            for m in ms:
+                out.append((m["title"], f"ERROR: {e}"))
+            continue
+
+        live = os.path.join(game_dir, path)
+        if os.path.isfile(live):
+            cur = checksum_to_mask(path, sha256(read(live)))
+        else:
+            cur = 0
+        if cur is None:
+            for m in ms:
+                out.append((m["title"], "ERROR: file not in a known state — revert first"))
+            continue
+
+        new_mask = cur
+        for m in ms:
+            bit = 1 << bit_for(path, m["id"])
+            new_mask = (new_mask | bit) if enable else (new_mask & ~bit)
+
+        if new_mask == cur:
+            verb = "already applied" if enable else "already not applied"
+            for m in ms:
+                out.append((m["title"], verb))
+            continue
+
+        write(live, build_bytes(path, new_mask))
+        verb = "applied" if enable else "reverted"
+        for m in ms:
+            out.append((m["title"], verb))
+    return out
+
+
+def run_apply(game_dir, mods=None):
+    return _toggle(game_dir, resolve_mods(mods), True)
+
+
+def run_revert(game_dir, mods=None):
+    return _toggle(game_dir, resolve_mods(mods), False)
 
 
 def run_patch(game_dir):
+    """Capture pristine originals and self-verify every combination checksum."""
     out = []
-    for entry in FILES:
-        name = entry["title"]
-        sp_orig = store_path(entry, ".original")
-        sp_patch = store_path(entry, ".patched")
-
-        # 1. Ensure we have the original in the store.
-        if not os.path.isfile(sp_orig):
-            live = os.path.join(game_dir, entry["path"])
-            if not os.path.isfile(live):
-                out.append((name, "SKIP: no original available (game file missing)"))
-                continue
-            h = sha256(read(live))
-            if h != entry["original"]:
-                out.append((name, "SKIP: game file is not the known original (patched/modified?)"))
-                continue
-            write(sp_orig, read(live))
-            out.append((name, "captured original from game"))
-
-        # 2. Verify original checksum.
-        orig = read(sp_orig)
-        if sha256(orig) != entry["original"]:
-            out.append((name, "ERROR: original checksum mismatch"))
+    for path in ORIGINALS:
+        base = os.path.basename(path)
+        try:
+            _ensure_original(game_dir, path)
+        except RuntimeError as e:
+            out.append((base, f"ERROR: {e}"))
             continue
-
-        # 3. Build and verify the patched file.
-        patched = apply_edits(orig, entry["patch_fn"])
-        if sha256(patched) != entry["patched"]:
-            out.append((name, "ERROR: patched checksum mismatch"))
-            continue
-        write(sp_patch, patched)
-        out.append((name, "patched -> store"))
-    return out
-
-
-def run_apply(game_dir):
-    out = []
-    for entry in FILES:
-        name = entry["title"]
-        sp_patch = store_path(entry, ".patched")
-        if not os.path.isfile(sp_patch):
-            out.append((name, "SKIP: no patched file in store (run patch first)"))
-            continue
-        patched = read(sp_patch)
-        if sha256(patched) != entry["patched"]:
-            out.append((name, "ERROR: patched checksum mismatch in store"))
-            continue
-        write(os.path.join(game_dir, entry["path"]), patched)
-        out.append((name, "applied"))
-    return out
-
-
-def run_revert(game_dir):
-    out = []
-    for entry in FILES:
-        name = entry["title"]
-        sp_orig = store_path(entry, ".original")
-        if not os.path.isfile(sp_orig):
-            out.append((name, "SKIP: no original in store"))
-            continue
-        orig = read(sp_orig)
-        if sha256(orig) != entry["original"]:
-            out.append((name, "ERROR: original checksum mismatch in store"))
-            continue
-        write(os.path.join(game_dir, entry["path"]), orig)
-        out.append((name, "reverted"))
+        for mask, expected in COMBINATIONS[path].items():
+            built = build_bytes(path, mask)
+            if sha256(built) != expected:
+                out.append((base, f"ERROR: combination {mask:b} checksum mismatch"))
+                break
+        else:
+            out.append((base, "originals captured, combinations verified"))
     return out
 
 
@@ -434,22 +529,22 @@ def run_revert(game_dir):
 # ---------------------------------------------------------------------------
 def cmd_status(game_dir):
     for name, status in get_statuses(game_dir):
-        print(f"{name:32s} {status}")
+        print(f"{name:28s} {status}")
 
 
 def cmd_patch(game_dir):
     for name, msg in run_patch(game_dir):
-        print(f"{name:32s} {msg}")
+        print(f"{name:28s} {msg}")
 
 
-def cmd_apply(game_dir):
-    for name, msg in run_apply(game_dir):
-        print(f"{name:32s} {msg}")
+def cmd_apply(game_dir, mods):
+    for name, msg in run_apply(game_dir, mods):
+        print(f"{name:28s} {msg}")
 
 
-def cmd_revert(game_dir):
-    for name, msg in run_revert(game_dir):
-        print(f"{name:32s} {msg}")
+def cmd_revert(game_dir, mods):
+    for name, msg in run_revert(game_dir, mods):
+        print(f"{name:28s} {msg}")
 
 
 def main():
@@ -458,7 +553,19 @@ def main():
         sys.exit(1)
 
     command = sys.argv[1]
-    game_dir = sys.argv[2] if len(sys.argv) > 2 else os.path.dirname(SCRIPT_DIR)
+    rest = sys.argv[2:]
+
+    def is_mod(a):
+        return any(a == m["id"] or a.lower() == m["title"].lower() for m in MODS)
+
+    game_dir = os.path.dirname(SCRIPT_DIR)
+    mods = []
+    if rest:
+        if is_mod(rest[0]):
+            mods = rest
+        else:
+            game_dir = rest[0]
+            mods = rest[1:]
 
     commands = {
         "status": cmd_status,
@@ -473,7 +580,11 @@ def main():
 
     if command in ("apply", "revert"):
         print("NOTE: make sure the game is closed before applying/reverting.")
-    commands[command](game_dir)
+
+    if command in ("apply", "revert"):
+        commands[command](game_dir, mods)
+    else:
+        commands[command](game_dir)
 
 
 if __name__ == "__main__":

@@ -2,8 +2,8 @@
 
 These are the technical findings from reverse-engineering **Space Pirates and
 Zombies** (SPAZ) to patch the respec "data debt" penalty, the `ACH_NO_RESPEC`
-achievement, and the specialist leveling. They document the engine, the
-compiled-script format, and the specifics of how the three effects are
+achievement, the specialist leveling, and the specialist capacity. They document
+the engine, the compiled-script format, and the specifics of how the effects are
 implemented.
 
 ---
@@ -33,7 +33,7 @@ grant them* is TorqueScript bytecode in the `.dso` files.
 
 ---
 
-## 2. The three effects and where they live
+## 2. The effects and where they live
 
 ### Data penalty ("Data Debt" / DEBT system)
 
@@ -342,6 +342,21 @@ immediates with `99` (all `< 0xFF`, so single-byte, size-preserving writes).
 The *active* count is a separate array `$SPECMAN_Max` (`0,0,1,2,3`) and is
 deliberately left unchanged — this mod raises only the total capacity, not the
 number of simultaneously active specialists.
+
+### Combination checksums (specialists.cs.dso)
+
+The Master and Capacity patches are independent mods that edit the same file,
+so `specialists.cs.dso` has four possible states, each with a distinct SHA-256:
+
+| Enabled | SHA-256 |
+|---|---|
+| `00` original | `4ce318785ccd0f9c582c453c146283ea39158b50e3555e373ad8654ca8c03449` |
+| `01` Master only | `b405a6ba29b0399f6b09003d916fccb99b2f886a3593ddc557cddc016840111f` |
+| `10` Capacity only | `8c72d6e59190f4f440a8c0bf79f949c8bad6f773f9d1b0cdd4806dbfdba44cad` |
+| `11` both | `c3a5546b77dbae4a172883872d8388ac9127135b1748da64bdaf5a070a3db402` |
+
+The two patches write disjoint byte ranges, so they commute — any order of
+applying them produces the same `11` result.
 
 ---
 

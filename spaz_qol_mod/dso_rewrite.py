@@ -220,6 +220,119 @@ def rewrite(data):
     return bytes(out)
 
 
+def rewrite_resolution_zoom(data):
+    """Change `getWord(getRes(), "0")` -> `getWord(Canvas.Extent, "0")` in
+    CreateLevelLayers so the scene zoom uses the ACTUAL canvas size instead of
+    the capped configured resolution. Fixes pixelated/upscaled HUD text and
+    scene content on enlarged (Special K) displays.
+
+    Size-preserving code change: the getRes() call (6 slots) is replaced by the
+    Canvas.Extent field read (6 slots). Appends "Extent" to the global string
+    table and updates the identifier table.
+    """
+    d = DSO(data)
+    code = list(d.code)
+
+    imap = {}
+    for off, ips in d.idents:
+        for ip in ips:
+            imap[ip] = off
+
+    getres_off = d.gstr.find(b'getRes')
+    getword_off = d.gstr.find(b'getWord')
+    canvas_off = d.gstr.find(b'Canvas')
+    if getres_off < 0 or getword_off < 0 or canvas_off < 0:
+        raise RuntimeError("getRes/getWord/Canvas string not found")
+
+    # Locate the getRes CALLFUNC_RESOLVE in getWord(getRes(), "0").
+    start = None
+    for ip, off in imap.items():
+        if off != getres_off:
+            continue
+        if ip - 1 < 0 or code[ip - 1] != OP_CALLFUNC_RESOLVE:
+            continue
+        if ip < 3 or code[ip - 2] != OP_PUSH_FRAME or code[ip - 3] != OP_PUSH_FRAME:
+            continue
+        if ip + 8 >= len(code):
+            continue
+        if code[ip + 3] != OP_PUSH:             # PUSH
+            continue
+        if code[ip + 4] != OP_LOADIMMED_STR:    # LOADIMMED_STR "0"
+            continue
+        if code[ip + 6] != OP_PUSH:             # PUSH
+            continue
+        if code[ip + 7] != OP_CALLFUNC_RESOLVE:  # getWord call
+            continue
+        if imap.get(ip + 8) != getword_off:
+            continue
+        start = ip - 3  # first PUSH_FRAME
+        break
+
+    if start is None:
+        raise RuntimeError("getWord(getRes(), '0') pattern not found")
+
+    # Replace 6 slots with: LOADIMMED_IDENT Canvas ; SETCUROBJECT ;
+    #                       SETCURFIELD Extent ; LOADFIELD_STR
+    newcode = list(code)
+    newcode[start + 0] = OP_LOADIMMED_IDENT  # 69
+    newcode[start + 1] = 0                   # Canvas ident placeholder
+    newcode[start + 2] = OP_SETCUROBJECT     # 44
+    newcode[start + 3] = OP_SETCURFIELD      # 47
+    newcode[start + 4] = 0                   # Extent ident placeholder
+    newcode[start + 5] = OP_LOADFIELD_STR    # 51
+
+    # Append "Extent" to the global string table.
+    extent_off = len(d.gstr)
+    new_gstr = d.gstr + b'Extent\x00'
+
+    # Rebuild identifier table: drop getRes entry, add Canvas IP + new Extent entry.
+    new_idents = []
+    for off, ips in d.idents:
+        if off == getres_off:
+            continue
+        new_ips = list(ips)
+        if off == canvas_off:
+            new_ips.append(start + 1)
+            new_ips.sort()
+        new_idents.append((off, new_ips))
+    new_idents.append((extent_off, [start + 4]))
+
+    # Rebuild file (code size unchanged; gstr + ident table changed).
+    out = bytearray()
+    out += struct.pack('<I', d.version)
+    out += struct.pack('<I', len(new_gstr))
+    out += new_gstr
+    out += struct.pack('<I', len(d.fstr))
+    out += d.fstr
+    gfc = len(d.gfloats)
+    out += struct.pack('<I', gfc)
+    for f in d.gfloats:
+        out += struct.pack('<d', f)
+    ffc = len(d.ffloats)
+    out += struct.pack('<I', ffc)
+    for f in d.ffloats:
+        out += struct.pack('<d', f)
+    code_bytes = bytearray()
+    for v in newcode:
+        if v < 0xFF:
+            code_bytes.append(v)
+        else:
+            code_bytes.append(0xFF)
+            code_bytes += struct.pack('<I', v)
+    out += struct.pack('<I', len(newcode))
+    out += struct.pack('<I', len(d.linePairs))
+    out += bytes(code_bytes)
+    for ip, line in d.linePairs:
+        out += struct.pack('<II', ip, line)
+    out += struct.pack('<I', len(new_idents))
+    for off, ips in new_idents:
+        out += struct.pack('<I', off)
+        out += struct.pack('<I', len(ips))
+        for ip in ips:
+            out += struct.pack('<I', ip)
+    return bytes(out)
+
+
 def main():
     if len(sys.argv) < 3:
         print(__doc__)

@@ -1,6 +1,6 @@
 # SPAZ QoL Mod
 
-This is a set of seven independent, toggleable mods for **Space Pirates and
+This is a set of ten independent, toggleable mods for **Space Pirates and
 Zombies**:
 
 1. **Free Respec** — removes the Data penalty when respeccing a research tree.
@@ -28,6 +28,19 @@ Zombies**:
 
 7. **System Map Centering** — same fix for the local-system (warp) map.
 
+8. **Crisp HUD Text** — enlarges the ship HUD text (hull / shields / cargo /
+   goons) from 14px to 18px so it stays legible when the game is upscaled via
+   Special K borderless fullscreen.
+
+9. **Crisp Scene Scaling** — makes the scene zoom use the actual screen size
+   instead of the capped 1080p config, fixing pixelated/upscaled scene content
+   and HUD text. *(This is the root-cause fix; with it applied, #8 may be
+   unnecessary.)*
+
+10. **Resolution Cap 4K** — raises the game's hardcoded resolution cap from
+    1920x1200 to 3840x2160, so you can select your native resolution (e.g.
+    2560x1440) in the launcher instead of relying on upscaling.
+
 ---
 
 ## Files affected
@@ -40,6 +53,9 @@ Zombies**:
 | `game/gameScripts/starMap.cs.dso` | Galaxy Map Centering — `getWords(getRes(),…)` → `Canvas.Extent`. |
 | `game/gameScripts/galaxyGenGui.cs.dso` | Galaxy Gen Centering — same change (known to hang; keep disabled). |
 | `game/gameScripts/instanceWarp.cs.dso` | System Map Centering — same change. |
+| `game/gameScripts/guiProfiles.cs.dso` | Crisp HUD Text — `GuiSpaceScrollProfile` fontSize 14 → 18. |
+| `game/gameScripts/levelLoading.cs.dso` | Crisp Scene Scaling — `getWord(getRes(),…)` → `getWord(Canvas.Extent,…)`. |
+| `common/gameScripts/canvas.cs.dso` | Resolution Cap 4K — `$maxResX`/`$maxResY` 1920×1200 → 3840×2160. |
 
 The two specialist mods edit the **same** file and are fully independent — you
 can apply either one, both, or neither. The file's SHA-256 checksum is a

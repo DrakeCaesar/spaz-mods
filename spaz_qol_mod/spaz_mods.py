@@ -260,12 +260,117 @@ def patch_specialist_capacity(d):
     return edits
 
 
+def _find_standalone_string(d, text):
+    """Return the gstr offset of a standalone (null-delimited) string, or None."""
+    b = text.encode()
+    for k in range(len(d.gstr) - len(b) + 1):
+        if d.gstr[k:k + len(b)] != b:
+            continue
+        prev = d.gstr[k - 1] if k > 0 else 0
+        nxt = d.gstr[k + len(b)] if k + len(b) < len(d.gstr) else 0
+        if prev == 0 and nxt == 0:
+            return k
+    return None
+
+
+def patch_hud_font(d, new_size=b'18'):
+    """Enlarge the HUD ship-text font (GuiSpaceScrollProfile) so it stays
+    legible when the game is upscaled (Special K borderless fullscreen).
+
+    The HUD text (hull / shields / cargo / goons) uses the bitmap font
+    "Arial Bold 14"; at higher-than-native resolutions the 14px glyphs get
+    stretched and blur. This repoints the profile's fontSize to a larger size.
+    """
+    prof_off = d.gstr.find(b'GuiSpaceScrollProfile')
+    fs_off = d.gstr.find(b'fontSize')
+    if prof_off < 0 or fs_off < 0:
+        raise RuntimeError("GuiSpaceScrollProfile/fontSize not found")
+
+    imap = {}
+    for off, ips in d.idents:
+        for ip in ips:
+            imap[ip] = off
+
+    def gstr_at(off):
+        e = d.gstr.find(b'\x00', off)
+        return d.gstr[off:e].decode('latin1') if e >= 0 else None
+
+    # Locate the CREATE_OBJECT that instantiates GuiSpaceScrollProfile.
+    # Pattern: LOADIMMED_IDENT 'GuiSpaceScrollProfile' ; PUSH ; CREATE_OBJECT
+    create_ip = None
+    for ip, off in imap.items():
+        if off != prof_off:
+            continue
+        if ip - 1 < 0 or d.code[ip - 1] != 69:  # LOADIMMED_IDENT
+            continue
+        if ip + 2 < len(d.code) and d.code[ip + 1] == 79 and d.code[ip + 2] == 1:
+            create_ip = ip + 2
+            break
+    if create_ip is None:
+        raise RuntimeError("GuiSpaceScrollProfile CREATE_OBJECT not found")
+
+    fail_off = d.code[create_ip + 5]  # CREATE_OBJECT failOffset = object end
+
+    # Find the fontSize '14' LOADIMMED_STR inside this object and repoint it.
+    for ip in range(create_ip + 1, min(fail_off, len(d.code))):
+        if d.code[ip] != 47:  # SETCURFIELD
+            continue
+        if imap.get(ip + 1) != fs_off:
+            continue
+        for j in range(ip - 1, create_ip, -1):
+            if d.code[j] != 67:  # LOADIMMED_STR
+                continue
+            operand = j + 1
+            if gstr_at(d.code[operand]) != '14':
+                continue
+            new_off = _find_standalone_string(d, new_size.decode())
+            if new_off is None:
+                raise RuntimeError(f"standalone '{new_size.decode()}' string not found")
+            # operand is stored compressed (0xFF + U32); write past the marker.
+            return [(d.slot_off[operand] + 1, new_off)]
+    raise RuntimeError("fontSize '14' not found in GuiSpaceScrollProfile")
+
+
+def patch_resolution_cap(d, max_x=3840, max_y=2160):
+    """Raise the game's resolution cap ($maxResX/$maxResY) from 1920x1200."""
+    edits = []
+    for name, new_val in ((b'$maxResX', max_x), (b'$maxResY', max_y)):
+        off = d.gstr.find(name)
+        if off < 0:
+            raise RuntimeError(f"{name.decode()} not found")
+        found = False
+        for ident_off, ips in d.idents:
+            if ident_off != off:
+                continue
+            for ip in ips:
+                if ip - 1 < 0 or d.code[ip - 1] != 35:  # SETCURVAR_CREATE
+                    continue
+                if ip - 3 < 0 or d.code[ip - 3] != 64:  # LOADIMMED_UINT
+                    continue
+                edits.append((d.slot_off[ip - 2] + 1, new_val))
+                found = True
+                break
+            if found:
+                break
+        if not found:
+            raise RuntimeError(f"{name.decode()} assignment not found")
+    return edits
+
+
 def _rewrite_map(data):
     """Non-size-preserving rewrite: getWords(getRes(),"0","1") -> Canvas.Extent.
     Makes map scene windows use the actual canvas size instead of the capped
     configured resolution, so they center/fill on enlarged displays."""
     import dso_rewrite
     return dso_rewrite.rewrite(data)
+
+
+def _rewrite_resolution_zoom(data):
+    """Rewrite: getWord(getRes(),"0") -> getWord(Canvas.Extent,"0") in
+    CreateLevelLayers, so the scene zoom uses the actual canvas size instead of
+    the capped 1080p config (fixes pixelated/upscaled scene + HUD text)."""
+    import dso_rewrite
+    return dso_rewrite.rewrite_resolution_zoom(data)
 
 
 # ---------------------------------------------------------------------------
@@ -323,6 +428,27 @@ MODS = [
         "desc": "Local-system map uses the actual screen size, so it centers on larger displays.",
         "rewrite_fn": _rewrite_map,
     },
+    {
+        "id": "hud_font",
+        "title": "Crisp HUD Text",
+        "path": "game/gameScripts/guiProfiles.cs.dso",
+        "desc": "Enlarges the ship HUD text (hull/shields/cargo/goons) from 14px to 18px so it stays legible when the game is upscaled via Special K.",
+        "patch_fn": patch_hud_font,
+    },
+    {
+        "id": "res_zoom",
+        "title": "Crisp Scene Scaling",
+        "path": "game/gameScripts/levelLoading.cs.dso",
+        "desc": "Scene zoom uses the actual screen size (not the capped 1080p config), fixing pixelated/upscaled scene + HUD text on enlarged displays.",
+        "rewrite_fn": _rewrite_resolution_zoom,
+    },
+    {
+        "id": "res_cap",
+        "title": "Resolution Cap 4K",
+        "path": "common/gameScripts/canvas.cs.dso",
+        "desc": "Raises the game's resolution cap from 1920x1200 to 3840x2160, so you can select a higher resolution in the launcher instead of upscaling.",
+        "patch_fn": patch_resolution_cap,
+    },
 ]
 
 # Pristine (unmodded) SHA-256 checksum for each game-relative path.
@@ -339,6 +465,12 @@ ORIGINALS = {
         "87165a51b91abd7a23c9fc838a95bb3e92c61309353bbc3a1f7867676a5b7d16",
     "game/gameScripts/instanceWarp.cs.dso":
         "fe0e6cdedd8f808346aacc5fade0f60b8b14d8770f22cd09693f16a8c8b2676b",
+    "game/gameScripts/guiProfiles.cs.dso":
+        "4b50b9b6765a47d05f2be1d704d15e411d221766e6265862bfe0e72174c0c115",
+    "game/gameScripts/levelLoading.cs.dso":
+        "12d87621626cc8086a3895d3d9789018cbb93bc1f28902226c53414333bb9105",
+    "common/gameScripts/canvas.cs.dso":
+        "f97f9342b7c9611460821764670526d97f5746bbff9874ed2e19219cb0082e5f",
 }
 
 # Expected SHA-256 for every enabled-subset of mods on a given path.
@@ -371,6 +503,18 @@ COMBINATIONS = {
     "game/gameScripts/instanceWarp.cs.dso": {
         0b0: "fe0e6cdedd8f808346aacc5fade0f60b8b14d8770f22cd09693f16a8c8b2676b",
         0b1: "e847a52d24f016a471f1e95ac271dda4e1e04fbe0f45c51045e93c45cae5f6ff",
+    },
+    "game/gameScripts/guiProfiles.cs.dso": {
+        0b0: "4b50b9b6765a47d05f2be1d704d15e411d221766e6265862bfe0e72174c0c115",
+        0b1: "68ccb1611bcb322e675c8e5e8a82eef09508ddbfab1dc382f512eabf93984f23",
+    },
+    "game/gameScripts/levelLoading.cs.dso": {
+        0b0: "12d87621626cc8086a3895d3d9789018cbb93bc1f28902226c53414333bb9105",
+        0b1: "01dfc37660828c8a8704e2eb60e5d2ec96b855d666ade81f9ed6d4f116ed87f8",
+    },
+    "common/gameScripts/canvas.cs.dso": {
+        0b0: "f97f9342b7c9611460821764670526d97f5746bbff9874ed2e19219cb0082e5f",
+        0b1: "5f70eb5de9ab9a4aa8f3c88e3e12e0e4aff8d86ee576300a70646bb5ae79060e",
     },
 }
 

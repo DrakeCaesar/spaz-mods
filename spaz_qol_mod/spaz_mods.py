@@ -260,6 +260,14 @@ def patch_specialist_capacity(d):
     return edits
 
 
+def _rewrite_map(data):
+    """Non-size-preserving rewrite: getWords(getRes(),"0","1") -> Canvas.Extent.
+    Makes map scene windows use the actual canvas size instead of the capped
+    configured resolution, so they center/fill on enlarged displays."""
+    import dso_rewrite
+    return dso_rewrite.rewrite(data)
+
+
 # ---------------------------------------------------------------------------
 # Mod registry — each MOD is an independent toggle. Multiple mods may target
 # the same file (the two specialist tweaks both edit specialists.cs.dso); the
@@ -294,6 +302,27 @@ MODS = [
         "desc": "Hold up to 99 specialists at every mothership level.",
         "patch_fn": patch_specialist_capacity,
     },
+    {
+        "id": "res_starmap",
+        "title": "Galaxy Map Centering",
+        "path": "game/gameScripts/starMap.cs.dso",
+        "desc": "Galaxy map uses the actual screen size (not the capped 1920x1200), so it centers on larger displays.",
+        "rewrite_fn": _rewrite_map,
+    },
+    {
+        "id": "res_galaxygen",
+        "title": "Galaxy Gen Centering",
+        "path": "game/gameScripts/galaxyGenGui.cs.dso",
+        "desc": "Galaxy-generation screen uses the actual screen size. NOTE: known to hang the game at the title->main-menu transition; keep disabled until fixed.",
+        "rewrite_fn": _rewrite_map,
+    },
+    {
+        "id": "res_instancewarp",
+        "title": "System Map Centering",
+        "path": "game/gameScripts/instanceWarp.cs.dso",
+        "desc": "Local-system map uses the actual screen size, so it centers on larger displays.",
+        "rewrite_fn": _rewrite_map,
+    },
 ]
 
 # Pristine (unmodded) SHA-256 checksum for each game-relative path.
@@ -304,6 +333,12 @@ ORIGINALS = {
         "acbb641da52d36825de0480f0ff996df97b25591deaed7e7b8af8bc8eb49067f",
     "game/gameScripts/specialists.cs.dso":
         "4ce318785ccd0f9c582c453c146283ea39158b50e3555e373ad8654ca8c03449",
+    "game/gameScripts/starMap.cs.dso":
+        "0b783fe051595c38bf949f5870959dafc3c53781b1daf89946fbcfcc4113e951",
+    "game/gameScripts/galaxyGenGui.cs.dso":
+        "87165a51b91abd7a23c9fc838a95bb3e92c61309353bbc3a1f7867676a5b7d16",
+    "game/gameScripts/instanceWarp.cs.dso":
+        "fe0e6cdedd8f808346aacc5fade0f60b8b14d8770f22cd09693f16a8c8b2676b",
 }
 
 # Expected SHA-256 for every enabled-subset of mods on a given path.
@@ -324,6 +359,18 @@ COMBINATIONS = {
         0b01: "b405a6ba29b0399f6b09003d916fccb99b2f886a3593ddc557cddc016840111f",
         0b10: "8c72d6e59190f4f440a8c0bf79f949c8bad6f773f9d1b0cdd4806dbfdba44cad",
         0b11: "c3a5546b77dbae4a172883872d8388ac9127135b1748da64bdaf5a070a3db402",
+    },
+    "game/gameScripts/starMap.cs.dso": {
+        0b0: "0b783fe051595c38bf949f5870959dafc3c53781b1daf89946fbcfcc4113e951",
+        0b1: "e88d1a08edd44f14a53425e8a26dd6510401be63309be5cf300fc075460803a8",
+    },
+    "game/gameScripts/galaxyGenGui.cs.dso": {
+        0b0: "87165a51b91abd7a23c9fc838a95bb3e92c61309353bbc3a1f7867676a5b7d16",
+        0b1: "d06be941fb43d44aab5762d3cb17bd034f5b3766046d29f5adcc78beef940595",
+    },
+    "game/gameScripts/instanceWarp.cs.dso": {
+        0b0: "fe0e6cdedd8f808346aacc5fade0f60b8b14d8770f22cd09693f16a8c8b2676b",
+        0b1: "e847a52d24f016a471f1e95ac271dda4e1e04fbe0f45c51045e93c45cae5f6ff",
     },
 }
 
@@ -387,7 +434,10 @@ def build_bytes(path, mask):
     data = read(store_original_path(path))
     for i, m in enumerate(mods_for_path(path)):
         if mask & (1 << i):
-            data = apply_edits(data, m["patch_fn"])
+            if "rewrite_fn" in m:
+                data = m["rewrite_fn"](data)
+            else:
+                data = apply_edits(data, m["patch_fn"])
     return data
 
 

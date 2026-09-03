@@ -1,6 +1,6 @@
 # SPAZ QoL Mod
 
-This is a set of four independent, toggleable mods for **Space Pirates and
+This is a set of seven independent, toggleable mods for **Space Pirates and
 Zombies**:
 
 1. **Free Respec** — removes the Data penalty when respeccing a research tree.
@@ -19,6 +19,15 @@ Zombies**:
 4. **Specialist Capacity 99** — raises the specialist capacity to 99 at every
    mothership level, so you can hold up to 99 specialists at once.
 
+5. **Galaxy Map Centering** — the galaxy map uses the actual screen size
+   instead of the capped 1920x1200 resolution, so it centers on displays larger
+   than 1080p (e.g. with Special K borderless fullscreen).
+
+6. **Galaxy Gen Centering** — same fix for the galaxy-generation screen.
+   *(Known issue: hangs at the title→main-menu transition — leave disabled until fixed.)*
+
+7. **System Map Centering** — same fix for the local-system (warp) map.
+
 ---
 
 ## Files affected
@@ -28,6 +37,9 @@ Zombies**:
 | `game/gameScripts/researchScreen.cs.dso` | Free Respec — `DEBT_GetRespecCost()` now returns `0`. |
 | `game/gameScripts/instanceClasses/storyClasses/sector4/sector4InstanceClasses.cs.dso` | Single Minded — `S4_FinalBossComplete()` grants `ACH_NO_RESPEC` unconditionally. |
 | `game/gameScripts/specialists.cs.dso` | Max-Level Specialists (`GetCurrentLevel()` always Master) **and** Specialist Capacity 99 (`$MaxSpecialists` = 99). |
+| `game/gameScripts/starMap.cs.dso` | Galaxy Map Centering — `getWords(getRes(),…)` → `Canvas.Extent`. |
+| `game/gameScripts/galaxyGenGui.cs.dso` | Galaxy Gen Centering — same change (known to hang; keep disabled). |
+| `game/gameScripts/instanceWarp.cs.dso` | System Map Centering — same change. |
 
 The two specialist mods edit the **same** file and are fully independent — you
 can apply either one, both, or neither. The file's SHA-256 checksum is a

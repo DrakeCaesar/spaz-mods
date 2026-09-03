@@ -1,4 +1,4 @@
-# SPAZ — Respec / Specialist Quality-of-Life mod
+# SPAZ QoL Mod
 
 This mod patches three things in **Space Pirates and Zombies**:
 
@@ -72,7 +72,7 @@ offsets or tables shift.
 There's a graphical front-end too. Run:
 
 ```bash
-python3 respec_nopenalty_mod/spaz_mods_gui.py
+python3 spaz_qol_mod/spaz_mods_gui.py
 ```
 
 It shows each file's status (color-coded), lets you pick the game folder, and has
@@ -87,7 +87,7 @@ Run `spaz_mods.py` with a command. It defaults the game root to the folder that
 contains the script, so you can usually just run it from anywhere.
 
 ```bash
-python3 respec_nopenalty_mod/spaz_mods.py <command>
+python3 spaz_qol_mod/spaz_mods.py <command>
 ```
 
 | Command | What it does |
@@ -100,11 +100,11 @@ python3 respec_nopenalty_mod/spaz_mods.py <command>
 Typical workflow (game closed):
 
 ```bash
-python3 respec_nopenalty_mod/spaz_mods.py status     # see current state
-python3 respec_nopenalty_mod/spaz_mods.py patch      # build patched files in store/
-python3 respec_nopenalty_mod/spaz_mods.py apply      # put them in the game
+python3 spaz_qol_mod/spaz_mods.py status     # see current state
+python3 spaz_qol_mod/spaz_mods.py patch      # build patched files in store/
+python3 spaz_qol_mod/spaz_mods.py apply      # put them in the game
 # ... play ...
-python3 respec_nopenalty_mod/spaz_mods.py revert     # put the originals back
+python3 spaz_qol_mod/spaz_mods.py revert     # put the originals back
 ```
 
 ### The `store/` folder

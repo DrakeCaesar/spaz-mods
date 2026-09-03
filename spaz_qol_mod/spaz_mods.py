@@ -248,6 +248,7 @@ FILES = [
     {
         "name": "researchScreen.cs.dso",
         "path": "game/gameScripts/researchScreen.cs.dso",
+        "desc": "Respec costs 0 Data — removes the Data Debt penalty.",
         "original": "e3ba3596b9e0f08e23806d2715e407841683e742e4c89994284dc5ab2214422a",
         "patched": "3b2caae8fcfcd84185020d89536bbf111e15ababb9cbf425843f04b95074ca98",
         "patch_fn": patch_data_penalty,
@@ -255,6 +256,7 @@ FILES = [
     {
         "name": "sector4InstanceClasses.cs.dso",
         "path": "game/gameScripts/instanceClasses/storyClasses/sector4/sector4InstanceClasses.cs.dso",
+        "desc": "ACH_NO_RESPEC always granted — respecing won't fail it.",
         "original": "acbb641da52d36825de0480f0ff996df97b25591deaed7e7b8af8bc8eb49067f",
         "patched": "b2cea5e4afdd1305dc29ecd3945baeb56cc58df0db20f38881877e8f5ac1452e",
         "patch_fn": patch_achievement,
@@ -262,6 +264,7 @@ FILES = [
     {
         "name": "specialists.cs.dso",
         "path": "game/gameScripts/specialists.cs.dso",
+        "desc": "Specialists are always Master tier — best stats without leveling.",
         "original": "4ce318785ccd0f9c582c453c146283ea39158b50e3555e373ad8654ca8c03449",
         "patched": "b405a6ba29b0399f6b09003d916fccb99b2f886a3593ddc557cddc016840111f",
         "patch_fn": patch_specialists,

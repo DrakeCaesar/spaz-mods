@@ -31,9 +31,9 @@ Zombies**:
 8. **Larger HUD Text** — increases the ship HUD text (hull / shields / cargo /
    goons) size from 14px to 18px.
 
-9. **Further Zoom Out** — raises the maximum zoom-out (`%baseMaxZoom` 1.5 →
-   3.0) in `CreateLevelLayers`, so you can zoom out further and see more of
-   the map.
+9. **Further Zoom Out** — lowers `scaleFactor` (`%assumedNormalResX` 1680 →
+   3360) in `CreateLevelLayers`, enlarging the center/min/max zoom and the
+   parallax background so you can see more of the map.
 
 10. **Resolution Cap 4K** — raises the game's hardcoded resolution cap from
     1920x1200 to 3840x2160, so you can select your native resolution (e.g.
@@ -56,7 +56,7 @@ Zombies**:
 | `game/gameScripts/galaxyGenGui.cs.dso` | Galaxy Gen Centering — same change (known to hang; keep disabled). |
 | `game/gameScripts/instanceWarp.cs.dso` | System Map Centering — same change. |
 | `game/gameScripts/guiProfiles.cs.dso` | Larger HUD Text — `GuiSpaceScrollProfile` fontSize 14 → 18. |
-| `game/gameScripts/levelLoading.cs.dso` | Further Zoom Out — `%baseMaxZoom` 1.5 → 3.0. |
+| `game/gameScripts/levelLoading.cs.dso` | Further Zoom Out — `%assumedNormalResX` 1680 → 3360 (lowers `scaleFactor`). |
 | `common/gameScripts/canvas.cs.dso` | Resolution Cap 4K — `$maxResX`/`$maxResY` 1920×1200 → 3840×2160. |
 | `SpazGame.exe` | 4GB Patch (Large Address Aware) — sets the LAA flag so the 32-bit exe can address up to 4GB. |
 

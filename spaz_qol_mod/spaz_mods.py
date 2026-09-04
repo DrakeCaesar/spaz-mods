@@ -357,19 +357,34 @@ def patch_resolution_cap(d, max_x=3840, max_y=2160):
     return edits
 
 
+def patch_zoom_scale(d, new_assumed=3360):
+    """Change %assumedNormalResX (1680 -> new_assumed) in CreateLevelLayers.
+    scaleFactor = currentResX / assumedNormalResX drives the center/min/max zoom
+    and the parallax background — the lever the old 'Crisp Scene Scaling' mod
+    actually moved. Raising assumedNormalResX lowers scaleFactor, zooming out."""
+    off = d.gstr.find(b'%assumedNormalResX')
+    if off < 0:
+        raise RuntimeError("%assumedNormalResX not found")
+    for ident_off, ips in d.idents:
+        if ident_off != off:
+            continue
+        for ip in ips:
+            if ip - 1 < 0 or d.code[ip - 1] != 35:  # SETCURVAR_CREATE
+                continue
+            if ip - 3 < 0 or d.code[ip - 3] != 64:  # LOADIMMED_UINT
+                continue
+            if d.code[ip - 2] != 1680:
+                raise RuntimeError("expected 1680, got %d" % d.code[ip - 2])
+            return [(d.slot_off[ip - 2] + 1, new_assumed)]
+    raise RuntimeError("%assumedNormalResX assignment not found")
+
+
 def _rewrite_map(data):
     """Non-size-preserving rewrite: getWords(getRes(),"0","1") -> Canvas.Extent.
     Makes map scene windows use the actual canvas size instead of the capped
     configured resolution, so they center/fill on enlarged displays."""
     import dso_rewrite
     return dso_rewrite.rewrite(data)
-
-
-def _rewrite_max_zoom(data):
-    """Rewrite: raise %baseMaxZoom (1.5 -> 3.0) in CreateLevelLayers so the
-    player can zoom out further and see more of the map."""
-    import dso_rewrite
-    return dso_rewrite.rewrite_max_zoom(data)
 
 
 def _rewrite_exe_laa(data):
@@ -449,8 +464,8 @@ MODS = [
         "id": "zoom_out",
         "title": "Further Zoom Out",
         "path": "game/gameScripts/levelLoading.cs.dso",
-        "desc": "Increases the maximum zoom-out (baseMaxZoom 1.5 -> 3.0) so you can zoom out further and see more of the map.",
-        "rewrite_fn": _rewrite_max_zoom,
+        "desc": "Zooms the camera out further by lowering scaleFactor (assumedNormalResX 1680 -> 3360), which enlarges the center/min/max zoom and the parallax background.",
+        "patch_fn": patch_zoom_scale,
     },
     {
         "id": "res_cap",
@@ -529,7 +544,7 @@ COMBINATIONS = {
     },
     "game/gameScripts/levelLoading.cs.dso": {
         0b0: "12d87621626cc8086a3895d3d9789018cbb93bc1f28902226c53414333bb9105",
-        0b1: "e1dcd0f56442bfecfb8581b6437757d61b1314a9569bbc2fab005c6d58aec084",
+        0b1: "03af24b36b401c5533700c252be0c54db85e7a0ba248f3bbdee14e872f3a358e",
     },
     "common/gameScripts/canvas.cs.dso": {
         0b0: "f97f9342b7c9611460821764670526d97f5746bbff9874ed2e19219cb0082e5f",

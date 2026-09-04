@@ -372,6 +372,17 @@ def _rewrite_max_zoom(data):
     return dso_rewrite.rewrite_max_zoom(data)
 
 
+def _rewrite_exe_laa(data):
+    """Set IMAGE_FILE_LARGE_ADDRESS_AWARE (the '4GB patch') so the 32-bit exe
+    can address up to 4GB of RAM instead of 2GB."""
+    e_lfanew = struct.unpack_from("<I", data, 0x3C)[0]
+    chars_off = e_lfanew + 4 + 18  # Characteristics field in the COFF header
+    chars = struct.unpack_from("<H", data, chars_off)[0]
+    out = bytearray(data)
+    struct.pack_into("<H", out, chars_off, chars | 0x0020)
+    return bytes(out)
+
+
 # ---------------------------------------------------------------------------
 # Mod registry — each MOD is an independent toggle. Multiple mods may target
 # the same file (the two specialist tweaks both edit specialists.cs.dso); the
@@ -448,6 +459,13 @@ MODS = [
         "desc": "Raises the game's resolution cap from 1920x1200 to 3840x2160, so you can select a higher resolution in the launcher instead of upscaling.",
         "patch_fn": patch_resolution_cap,
     },
+    {
+        "id": "exe_laa",
+        "title": "4GB Patch (Large Address Aware)",
+        "path": "SpazGame.exe",
+        "desc": "Sets the Large Address Aware flag so the 32-bit exe can address up to 4GB of RAM instead of 2GB. (Patches SpazGame.exe, not a .dso file.)",
+        "rewrite_fn": _rewrite_exe_laa,
+    },
 ]
 
 # Pristine (unmodded) SHA-256 checksum for each game-relative path.
@@ -470,6 +488,8 @@ ORIGINALS = {
         "12d87621626cc8086a3895d3d9789018cbb93bc1f28902226c53414333bb9105",
     "common/gameScripts/canvas.cs.dso":
         "f97f9342b7c9611460821764670526d97f5746bbff9874ed2e19219cb0082e5f",
+    "SpazGame.exe":
+        "980c30064f2629d4850c2d19711371aa178c8ae1ce733e397d5058e4ddf8bd1a",
 }
 
 # Expected SHA-256 for every enabled-subset of mods on a given path.
@@ -514,6 +534,10 @@ COMBINATIONS = {
     "common/gameScripts/canvas.cs.dso": {
         0b0: "f97f9342b7c9611460821764670526d97f5746bbff9874ed2e19219cb0082e5f",
         0b1: "5f70eb5de9ab9a4aa8f3c88e3e12e0e4aff8d86ee576300a70646bb5ae79060e",
+    },
+    "SpazGame.exe": {
+        0b0: "980c30064f2629d4850c2d19711371aa178c8ae1ce733e397d5058e4ddf8bd1a",
+        0b1: "4f0e107a077cefa9357ded060014155bb5b403701898109004c5507d1fe9ef7b",
     },
 }
 

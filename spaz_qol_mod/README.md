@@ -1,6 +1,6 @@
 # SPAZ QoL Mod
 
-This is a set of ten independent, toggleable mods for **Space Pirates and
+This is a set of eleven independent, toggleable mods for **Space Pirates and
 Zombies**:
 
 1. **Free Respec** — removes the Data penalty when respeccing a research tree.
@@ -39,6 +39,10 @@ Zombies**:
     1920x1200 to 3840x2160, so you can select your native resolution (e.g.
     2560x1440) in the launcher instead of relying on upscaling.
 
+11. **4GB Patch (Large Address Aware)** — sets the Large Address Aware flag so
+    the 32-bit exe can address up to 4GB of RAM instead of 2GB. Patches
+    `SpazGame.exe` (the engine), not a `.dso` script.
+
 ---
 
 ## Files affected
@@ -54,6 +58,7 @@ Zombies**:
 | `game/gameScripts/guiProfiles.cs.dso` | Larger HUD Text — `GuiSpaceScrollProfile` fontSize 14 → 18. |
 | `game/gameScripts/levelLoading.cs.dso` | Further Zoom Out — `%baseMaxZoom` 1.5 → 3.0. |
 | `common/gameScripts/canvas.cs.dso` | Resolution Cap 4K — `$maxResX`/`$maxResY` 1920×1200 → 3840×2160. |
+| `SpazGame.exe` | 4GB Patch (Large Address Aware) — sets the LAA flag so the 32-bit exe can address up to 4GB. |
 
 The two specialist mods edit the **same** file and are fully independent — you
 can apply either one, both, or neither. The file's SHA-256 checksum is a
